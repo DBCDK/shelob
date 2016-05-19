@@ -58,14 +58,13 @@ func updateBackends(config *ProxyConfiguration) map[string]*roundrobin.RoundRobi
 
 				backends[domainWithPort].UpsertServer(url)
 				fmt.Printf("%v -> %v\n", domainWithPort, url)
-
 			}
 		}
 
 		// create custom domain mappings
 		for label, exposedDomain := range app.Labels {
 			if strings.HasPrefix(label, labelPrefix) {
-				domainWithPort := exposedDomain + ".localhost:" + strconv.Itoa(config.Port)
+				domainWithPort := exposedDomain + ":" + strconv.Itoa(config.Port)
 				frontend := Frontend{}
 				port, err := strconv.Atoi(label[len(labelPrefix):len(label)])
 				if err != nil {
