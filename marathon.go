@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func updateBackends() map[string]*roundrobin.RoundRobin {
+func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
 	//resp, err := http.PostForm(
 	//	"https://mesos-master-t02:8080/v2/eventSubscriptions",
 	//	url.Values{"callbackUrl": {"foo"}})
@@ -22,14 +22,10 @@ func updateBackends() map[string]*roundrobin.RoundRobin {
 	apps, appsErr := getApps()
 	tasks, tasksErr := getTasks()
 	if appsErr != nil {
-		println("Error:")
-		println(appsErr.Error())
-		return nil
+		return nil, appsErr
 	}
 	if tasksErr != nil {
-		println("Error:")
-		println(tasksErr.Error())
-		return nil
+		return nil, tasksErr
 	}
 
 	var indexedApps = indexApps(apps)
@@ -89,7 +85,7 @@ func updateBackends() map[string]*roundrobin.RoundRobin {
 		}
 	}
 
-	return backends
+	return backends, nil
 }
 
 func getApps() (apps Apps, err error) {

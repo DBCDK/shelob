@@ -24,7 +24,14 @@ var (
 
 func configManager(backendChan chan map[string]*roundrobin.RoundRobin) error {
 	for {
-		backendChan <- updateBackends()
+		backends, err := updateBackends()
+
+		if (err != nil) {
+			println("Error:")
+			println(err.Error())
+		} else {
+			backendChan <- backends
+		}
 
 		select {
 		case <-updateTracker:
