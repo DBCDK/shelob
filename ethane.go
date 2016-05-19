@@ -15,16 +15,20 @@ var (
 	httpPort     = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
 	masterDomain = kingpin.Flag("domain", "All apps will by default be exposed as a subdomain to this domain").Default("localhost").String()
 	marathons    = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
+	updateInterval = kingpin.Flag("updateInterval", "Force updates this often [s]").Default("5").Int()
+	updateTracker = make(chan int)
 )
 
 func configManager(config *ProxyConfiguration, backendChan chan map[string]*roundrobin.RoundRobin) error {
 	for {
+		backendChan <- updateBackends(config)
+
 		select {
-		case <-time.After(time.Second * 2):
+		case <-updateTracker:
+			fmt.Printf("Update requested..\n")
+		case <-time.After(time.Second * time.Duration(*updateInterval)):
 			fmt.Printf("No changes for a while, forcing reload..\n")
 		}
-
-		backendChan <- updateBackends(config)
 	}
 }
 
