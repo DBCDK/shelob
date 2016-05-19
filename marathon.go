@@ -103,7 +103,9 @@ func getApps() (apps Apps, err error) {
 		return apps, err
 	}
 
-	req.SetBasicAuth("admin", "admin")
+	// todo: validate the presence of ':' to avoid segfaults
+	auth := strings.SplitN(*marathonAuth, ":", 2)
+	req.SetBasicAuth(auth[0], auth[1])
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -136,7 +138,9 @@ func getTasks() (tasks Tasks, err error) {
 		return tasks, err
 	}
 
-	req.SetBasicAuth("admin", "admin")
+	// todo: validate the presence of ':' to avoid segfaults
+	auth := strings.SplitN(*marathonAuth, ":", 2)
+	req.SetBasicAuth(auth[0], auth[1])
 
 	resp, err := client.Do(req)
 	if err != nil {
