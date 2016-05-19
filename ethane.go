@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
@@ -18,11 +19,10 @@ var (
 	marathonAuth   = kingpin.Flag("marathon-auth", "username:password for marathon").String()
 	updateInterval = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
 	insecureSSL    = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
-	updateTracker  = make(chan int)
 	forwarder, _   = forward.New()
 )
 
-func configManager(backendChan chan map[string]*roundrobin.RoundRobin) error {
+func backendManager(backendChan chan map[string]*roundrobin.RoundRobin, updateChan chan RawEvent) error {
 	for {
 		backends, err := updateBackends()
 
@@ -34,8 +34,31 @@ func configManager(backendChan chan map[string]*roundrobin.RoundRobin) error {
 		}
 
 		select {
-		case <-updateTracker:
+		case rawEvent := <-updateChan:
 			fmt.Printf("Update requested..\n")
+
+			switch rawEvent.Event {
+			case "status_update_event":
+				var event EventStatusUpdate
+				err := json.Unmarshal(rawEvent.Data, &event)
+				if err != nil {
+					println(err.Error())
+					println(string(rawEvent.Data))
+				}
+			case "health_status_changed_event":
+				//var event EventHealthStatusChanged
+			default:
+				println(rawEvent.Event)
+				println(string(rawEvent.Data))
+			}
+
+			var event Event
+			err := json.Unmarshal(rawEvent.Data, &event)
+			if err != nil {
+				println(err.Error())
+				println(string(rawEvent.Data))
+			}
+
 		case <-time.After(time.Second * time.Duration(*updateInterval)):
 			fmt.Printf("No changes for a while, forcing reload..\n")
 		}
@@ -46,6 +69,7 @@ func main() {
 	kingpin.Parse()
 	backends := make(map[string]*roundrobin.RoundRobin)
 	backendChan := make(chan map[string]*roundrobin.RoundRobin)
+	updateChan := make(chan RawEvent)
 
 	go func() {
 		for {
@@ -56,16 +80,17 @@ func main() {
 		}
 	}()
 
-	go configManager(backendChan)
+	go backendManager(backendChan, updateChan)
+	go trackUpdates(updateChan)
 
 	redirect := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		fmt.Printf("%v %v\n", req.RemoteAddr, req.Host)
+		//fmt.Printf("%v %v\n", req.RemoteAddr, req.Host)
 
 		if backend := backends[req.Host]; backend != nil {
 			backend.ServeHTTP(w, req)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprint(w, "not found")
+			//fmt.Fprint(w, "not found")
 		}
 	})
 

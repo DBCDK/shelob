@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -10,25 +12,82 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
-func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
-	//resp, err := http.PostForm(
-	//	"https://mesos-master-t02:8080/v2/eventSubscriptions",
-	//	url.Values{"callbackUrl": {"foo"}})
+func trackUpdates(updateChan chan RawEvent) {
+	for {
+		err := doTrackUpdates(updateChan)
+		if err != nil {
+			println("Error:")
+			println(err.Error())
+		}
+		time.Sleep(time.Second)
+	}
+}
 
+func doTrackUpdates(updateChan chan RawEvent) error {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: *insecureSSL},
+	}
+	client := &http.Client{Transport: tr}
+
+	req, err := http.NewRequest("GET", (*marathons)[0]+"/v2/events", nil)
+	if err != nil {
+		return err
+	}
+
+	// todo: validate the presence of ':' to avoid segfaults
+	if len(*marathonAuth) > 0 {
+		auth := strings.SplitN(*marathonAuth, ":", 2)
+		req.SetBasicAuth(auth[0], auth[1])
+	}
+
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	event := RawEvent{}
+	eventReader := bufio.NewReader(resp.Body)
+
+	for {
+		line, err := eventReader.ReadBytes('\n')
+		if err != nil {
+			return err
+		}
+
+		//fmt.Printf("Event (%v bytes): %v\n", len(line), string(line))
+
+		switch {
+		case bytes.HasPrefix(line, []byte("event:")):
+			event.Event = strings.TrimSpace(string(line[7:]))
+		case bytes.HasPrefix(line, []byte("data:")):
+			event.Data = line[6:]
+		case bytes.Equal(line, []byte("\r\n")):
+			if len(event.Event) > 0 && len(event.Data) > 0 {
+				updateChan <- event
+			}
+			event = RawEvent{}
+		default:
+			println("Ignored event: " + string(line))
+		}
+	}
+}
+
+func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
 	backends := make(map[string]*roundrobin.RoundRobin)
 
-	println("get apps")
 	apps, appsErr := getApps()
-	println("get tasks")
 	tasks, tasksErr := getTasks()
 	if appsErr != nil {
-		println("get apps failed")
 		return nil, appsErr
 	}
 	if tasksErr != nil {
-		println("get tasks failed")
 		return nil, tasksErr
 	}
 
@@ -57,7 +116,7 @@ func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
 				}
 
 				backends[domainWithPort].UpsertServer(url)
-				fmt.Printf("%v -> %v\n", domainWithPort, url)
+				//fmt.Printf("%v -> %v\n", domainWithPort, url)
 			}
 		}
 
@@ -83,7 +142,7 @@ func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
 					frontend.Backends = append(frontend.Backends, Backend{*url})
 
 					backends[domainWithPort].UpsertServer(url)
-					fmt.Printf("%v -> %v\n", exposedDomain, url)
+					//fmt.Printf("%v -> %v\n", exposedDomain, url)
 				}
 			}
 		}
@@ -104,7 +163,7 @@ func getApps() (apps Apps, err error) {
 	}
 
 	// todo: validate the presence of ':' to avoid segfaults
-	if (len(*marathonAuth) > 0) {
+	if len(*marathonAuth) > 0 {
 		auth := strings.SplitN(*marathonAuth, ":", 2)
 		req.SetBasicAuth(auth[0], auth[1])
 	}
@@ -143,7 +202,7 @@ func getTasks() (tasks Tasks, err error) {
 	}
 
 	// todo: validate the presence of ':' to avoid segfaults
-	if (len(*marathonAuth) > 0) {
+	if len(*marathonAuth) > 0 {
 		auth := strings.SplitN(*marathonAuth, ":", 2)
 		req.SetBasicAuth(auth[0], auth[1])
 	}
