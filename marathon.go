@@ -19,12 +19,16 @@ func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
 
 	backends := make(map[string]*roundrobin.RoundRobin)
 
+	println("get apps")
 	apps, appsErr := getApps()
+	println("get tasks")
 	tasks, tasksErr := getTasks()
 	if appsErr != nil {
+		println("get apps failed")
 		return nil, appsErr
 	}
 	if tasksErr != nil {
+		println("get tasks failed")
 		return nil, tasksErr
 	}
 
@@ -100,8 +104,12 @@ func getApps() (apps Apps, err error) {
 	}
 
 	// todo: validate the presence of ':' to avoid segfaults
-	auth := strings.SplitN(*marathonAuth, ":", 2)
-	req.SetBasicAuth(auth[0], auth[1])
+	if (len(*marathonAuth) > 0) {
+		auth := strings.SplitN(*marathonAuth, ":", 2)
+		req.SetBasicAuth(auth[0], auth[1])
+	}
+
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -135,8 +143,12 @@ func getTasks() (tasks Tasks, err error) {
 	}
 
 	// todo: validate the presence of ':' to avoid segfaults
-	auth := strings.SplitN(*marathonAuth, ":", 2)
-	req.SetBasicAuth(auth[0], auth[1])
+	if (len(*marathonAuth) > 0) {
+		auth := strings.SplitN(*marathonAuth, ":", 2)
+		req.SetBasicAuth(auth[0], auth[1])
+	}
+
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
