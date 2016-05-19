@@ -33,14 +33,6 @@ func configManager(config *ProxyConfiguration, backendChan chan map[string]*roun
 	}
 }
 
-func reverseStringArray(array []string) []string {
-	for i, j := 0, len(array)-1; i < j; i, j = i+1, j-1 {
-		array[i], array[j] = array[j], array[i]
-	}
-
-	return array
-}
-
 func updateBackends(config *ProxyConfiguration) map[string]*roundrobin.RoundRobin {
 	//resp, err := http.PostForm(
 	//	"https://mesos-master-t02:8080/v2/eventSubscriptions",
@@ -128,7 +120,7 @@ func getApps() (apps Apps, err error) {
 	}
 	client := &http.Client{Transport: tr}
 
-	req, err := http.NewRequest("GET", (*marathons)[0] + "/v2/apps", nil)
+	req, err := http.NewRequest("GET", (*marathons)[0]+"/v2/apps", nil)
 	if err != nil {
 		return apps, err
 	}
@@ -161,7 +153,7 @@ func getTasks() (tasks Tasks, err error) {
 	}
 	client := &http.Client{Transport: tr}
 
-	req, err := http.NewRequest("GET", (*marathons)[0] + "/v2/tasks", nil)
+	req, err := http.NewRequest("GET", (*marathons)[0]+"/v2/tasks", nil)
 	if err != nil {
 		return tasks, err
 	}
