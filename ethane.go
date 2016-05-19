@@ -4,16 +4,22 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	_ "github.com/davecgh/go-spew/spew"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
+	"gopkg.in/alecthomas/kingpin.v2"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	_ "net/url"
 	"strconv"
 	"strings"
 	"time"
+)
+
+var (
+	app          = kingpin.New("timeattack", "Replays http requests").Version("1.0")
+	httpPort     = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
+	masterDomain = kingpin.Flag("domain", "All apps will by default be exposed as a subdomain to this domain").Default("localhost").String()
+	marathons    = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
 )
 
 func configManager(config *ProxyConfiguration, backendChan chan map[string]*roundrobin.RoundRobin) error {
@@ -24,16 +30,6 @@ func configManager(config *ProxyConfiguration, backendChan chan map[string]*roun
 		}
 
 		backendChan <- updateBackends(config)
-
-		//for domain, frontend := range config.Domains {
-		//	println(domain)
-		//	rrb, _ := roundrobin.New(config.Forwarder)
-		//	for _, backend := range frontend.Backends {
-		//		rrb.UpsertServer(&backend.url)
-		//	}
-		//
-		//	config.Backends[domain] = rrb
-		//}
 	}
 }
 
@@ -51,8 +47,6 @@ func updateBackends(config *ProxyConfiguration) map[string]*roundrobin.RoundRobi
 	//	url.Values{"callbackUrl": {"foo"}})
 
 	backends := make(map[string]*roundrobin.RoundRobin)
-
-	defaultDomain := "localhost"
 
 	apps, appsErr := getApps()
 	tasks, tasksErr := getTasks()
@@ -76,7 +70,7 @@ func updateBackends(config *ProxyConfiguration) map[string]*roundrobin.RoundRobi
 		// appId /foo/bar -> $portId.bar.foo.$defaultDomain
 		appIdParts := strings.Split(appId[1:], "/")
 		reversedAppIdParts := reverseStringArray(appIdParts)
-		reversedAppIdParts = append(reversedAppIdParts, defaultDomain)
+		reversedAppIdParts = append(reversedAppIdParts, *masterDomain)
 		domain := strings.Join(reversedAppIdParts, ".")
 
 		for _, task := range indexedTasks[appId] {
@@ -134,7 +128,7 @@ func getApps() (apps Apps, err error) {
 	}
 	client := &http.Client{Transport: tr}
 
-	req, err := http.NewRequest("GET", "https://mesos-master-t01:8080/v2/apps", nil)
+	req, err := http.NewRequest("GET", (*marathons)[0] + "/v2/apps", nil)
 	if err != nil {
 		return apps, err
 	}
@@ -167,7 +161,7 @@ func getTasks() (tasks Tasks, err error) {
 	}
 	client := &http.Client{Transport: tr}
 
-	req, err := http.NewRequest("GET", "https://mesos-master-t01:8080/v2/tasks", nil)
+	req, err := http.NewRequest("GET", (*marathons)[0] + "/v2/tasks", nil)
 	if err != nil {
 		return tasks, err
 	}
@@ -216,7 +210,7 @@ func indexTasks(tasks Tasks) (indexedTasks map[string][]Task) {
 }
 
 func main() {
-	port := 8080
+	kingpin.Parse()
 	fwd, _ := forward.New() // Forwards incoming requests to whatever location URL points to, adds proper forwarding headers
 	backends := make(map[string]*roundrobin.RoundRobin)
 	backendChan := make(chan map[string]*roundrobin.RoundRobin)
@@ -230,7 +224,7 @@ func main() {
 		}
 	}()
 
-	proxyConfiguration := ProxyConfiguration{port, fwd, backends}
+	proxyConfiguration := ProxyConfiguration{*httpPort, fwd, backends}
 
 	go configManager(&proxyConfiguration, backendChan)
 
