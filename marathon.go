@@ -2,14 +2,14 @@ package main
 
 import (
 	"crypto/tls"
-	"net/http"
-	"github.com/vulcand/oxy/roundrobin"
-	"strings"
-	"strconv"
-	"net/url"
-	"fmt"
-	"io/ioutil"
 	"encoding/json"
+	"fmt"
+	"github.com/vulcand/oxy/roundrobin"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 )
 
 func updateBackends(config *ProxyConfiguration) map[string]*roundrobin.RoundRobin {
@@ -95,7 +95,7 @@ func updateBackends(config *ProxyConfiguration) map[string]*roundrobin.RoundRobi
 
 func getApps() (apps Apps, err error) {
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: *insecureSSL},
 	}
 	client := &http.Client{Transport: tr}
 

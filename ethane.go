@@ -11,12 +11,13 @@ import (
 )
 
 var (
-	app          = kingpin.New("timeattack", "Replays http requests").Version("1.0")
-	httpPort     = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
-	masterDomain = kingpin.Flag("domain", "All apps will by default be exposed as a subdomain to this domain").Default("localhost").String()
-	marathons    = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
+	app            = kingpin.New("timeattack", "Replays http requests").Version("1.0")
+	httpPort       = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
+	masterDomain   = kingpin.Flag("domain", "All apps will by default be exposed as a subdomain to this domain").Default("localhost").String()
+	marathons      = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
 	updateInterval = kingpin.Flag("updateInterval", "Force updates this often [s]").Default("5").Int()
-	updateTracker = make(chan int)
+	insecureSSL    = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
+	updateTracker  = make(chan int)
 )
 
 func configManager(config *ProxyConfiguration, backendChan chan map[string]*roundrobin.RoundRobin) error {
