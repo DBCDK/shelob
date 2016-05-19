@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func updateBackends(config *ProxyConfiguration) map[string]*roundrobin.RoundRobin {
+func updateBackends() map[string]*roundrobin.RoundRobin {
 	//resp, err := http.PostForm(
 	//	"https://mesos-master-t02:8080/v2/eventSubscriptions",
 	//	url.Values{"callbackUrl": {"foo"}})
@@ -46,9 +46,9 @@ func updateBackends(config *ProxyConfiguration) map[string]*roundrobin.RoundRobi
 
 		for _, task := range indexedTasks[appId] {
 			for portIndex, actualPort := range task.Ports {
-				domainWithPort := strconv.Itoa(portIndex) + "." + domain + ":" + strconv.Itoa(config.Port)
+				domainWithPort := strconv.Itoa(portIndex) + "." + domain + ":" + strconv.Itoa(*httpPort)
 				if _, ok := backends[domainWithPort]; !ok {
-					backends[domainWithPort], _ = roundrobin.New(config.Forwarder)
+					backends[domainWithPort], _ = roundrobin.New(forwarder)
 				}
 
 				url, err := url.Parse(fmt.Sprintf("http://%s:%v", task.Host, actualPort))
@@ -64,7 +64,7 @@ func updateBackends(config *ProxyConfiguration) map[string]*roundrobin.RoundRobi
 		// create custom domain mappings
 		for label, exposedDomain := range app.Labels {
 			if strings.HasPrefix(label, labelPrefix) {
-				domainWithPort := exposedDomain + ":" + strconv.Itoa(config.Port)
+				domainWithPort := exposedDomain + ":" + strconv.Itoa(*httpPort)
 				frontend := Frontend{}
 				port, err := strconv.Atoi(label[len(labelPrefix):len(label)])
 				if err != nil {
@@ -77,7 +77,7 @@ func updateBackends(config *ProxyConfiguration) map[string]*roundrobin.RoundRobi
 					}
 
 					if _, ok := backends[domainWithPort]; !ok {
-						backends[domainWithPort], _ = roundrobin.New(config.Forwarder)
+						backends[domainWithPort], _ = roundrobin.New(forwarder)
 					}
 
 					frontend.Backends = append(frontend.Backends, Backend{*url})

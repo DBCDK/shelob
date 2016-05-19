@@ -19,11 +19,12 @@ var (
 	updateInterval = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
 	insecureSSL    = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	updateTracker  = make(chan int)
+	forwarder, _   = forward.New()
 )
 
-func configManager(config *ProxyConfiguration, backendChan chan map[string]*roundrobin.RoundRobin) error {
+func configManager(backendChan chan map[string]*roundrobin.RoundRobin) error {
 	for {
-		backendChan <- updateBackends(config)
+		backendChan <- updateBackends()
 
 		select {
 		case <-updateTracker:
@@ -36,7 +37,6 @@ func configManager(config *ProxyConfiguration, backendChan chan map[string]*roun
 
 func main() {
 	kingpin.Parse()
-	fwd, _ := forward.New() // Forwards incoming requests to whatever location URL points to, adds proper forwarding headers
 	backends := make(map[string]*roundrobin.RoundRobin)
 	backendChan := make(chan map[string]*roundrobin.RoundRobin)
 
@@ -49,9 +49,7 @@ func main() {
 		}
 	}()
 
-	proxyConfiguration := ProxyConfiguration{*httpPort, fwd, backends}
-
-	go configManager(&proxyConfiguration, backendChan)
+	go configManager(backendChan)
 
 	redirect := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		fmt.Printf("%v %v\n", req.RemoteAddr, req.Host)
@@ -65,7 +63,7 @@ func main() {
 	})
 
 	s := &http.Server{
-		Addr:    ":" + strconv.Itoa(proxyConfiguration.Port),
+		Addr:    ":" + strconv.Itoa(*httpPort),
 		Handler: redirect,
 	}
 	s.ListenAndServe()
