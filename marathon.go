@@ -15,9 +15,42 @@ import (
 	"time"
 )
 
-func trackUpdates(updateChan chan RawEvent) {
+func trackUpdates(updateChan chan time.Time) {
+	marathonEventChan := make(chan RawEvent)
+	go func() {
+		select {
+		case rawEvent := <-marathonEventChan:
+			updateChan <- time.Now()
+			switch rawEvent.Event {
+			case "status_update_event":
+				var event EventStatusUpdate
+				err := json.Unmarshal(rawEvent.Data, &event)
+				if err != nil {
+					println(err.Error())
+					println(string(rawEvent.Data))
+				}
+			case "health_status_changed_event":
+			//var event EventHealthStatusChanged
+			default:
+				println(rawEvent.Event)
+				println(string(rawEvent.Data))
+			}
+
+			var event Event
+			err := json.Unmarshal(rawEvent.Data, &event)
+			if err != nil {
+				println(err.Error())
+				println(string(rawEvent.Data))
+			}
+
+		case <-time.After(time.Second * time.Duration(*updateInterval)):
+			fmt.Printf("No changes for a while, forcing reload..\n")
+		}
+
+	}()
+
 	for {
-		err := doTrackUpdates(updateChan)
+		err := doTrackUpdates(marathonEventChan)
 		if err != nil {
 			println("Error:")
 			println(err.Error())
@@ -26,7 +59,7 @@ func trackUpdates(updateChan chan RawEvent) {
 	}
 }
 
-func doTrackUpdates(updateChan chan RawEvent) error {
+func doTrackUpdates(marathonEventChan chan RawEvent) error {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: *insecureSSL},
 	}
@@ -55,13 +88,15 @@ func doTrackUpdates(updateChan chan RawEvent) error {
 	event := RawEvent{}
 	eventReader := bufio.NewReader(resp.Body)
 
+	eventId := 0
+
 	for {
 		line, err := eventReader.ReadBytes('\n')
 		if err != nil {
 			return err
 		}
 
-		//fmt.Printf("Event (%v bytes): %v\n", len(line), string(line))
+		fmt.Printf("Event %v (%v bytes): %v\n", eventId, len(line), string(line))
 
 		switch {
 		case bytes.HasPrefix(line, []byte("event:")):
@@ -70,12 +105,15 @@ func doTrackUpdates(updateChan chan RawEvent) error {
 			event.Data = line[6:]
 		case bytes.Equal(line, []byte("\r\n")):
 			if len(event.Event) > 0 && len(event.Data) > 0 {
-				updateChan <- event
+				marathonEventChan <- event
+			} else {
 			}
 			event = RawEvent{}
 		default:
 			println("Ignored event: " + string(line))
 		}
+
+		eventId += 1
 	}
 }
 
