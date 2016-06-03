@@ -3,6 +3,7 @@ package main
 import (
 	"net/url"
 	"time"
+	"encoding/json"
 )
 
 type Frontend struct {
@@ -10,7 +11,16 @@ type Frontend struct {
 }
 
 type Backend struct {
-	url url.URL
+	Url *url.URL
+}
+
+// convert url to string when serializing
+func (backend Backend) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Url string `json:"url"`
+	}{
+		Url: backend.Url.String(),
+	})
 }
 
 type Apps struct {

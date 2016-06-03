@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"net/http"
 	"strconv"
 	"time"
+	"encoding/json"
 )
 
 var (
@@ -20,10 +20,25 @@ var (
 	updateInterval = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
 	insecureSSL    = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	forwarder, _   = forward.New()
-	backends       = make(map[string]*roundrobin.RoundRobin)
+	backends       = make(map[string][]Backend)
+	rrbBackends    = make(map[string]*roundrobin.RoundRobin)
 )
 
-func backendManager(backendChan chan map[string]*roundrobin.RoundRobin, updateChan chan time.Time) error {
+func createRoundRobinBackends(backends map[string][]Backend) map[string]*roundrobin.RoundRobin {
+	rrbBackends := make(map[string]*roundrobin.RoundRobin)
+
+	for domain, backendList := range backends {
+		rrbBackends[domain], _ = roundrobin.New(forwarder)
+
+		for _, backend := range backendList {
+			rrbBackends[domain].UpsertServer(backend.Url)
+		}
+	}
+
+	return rrbBackends
+}
+
+func backendManager(backendChan chan map[string][]Backend, updateChan chan time.Time) error {
 	for {
 		backends, err := updateBackends()
 
@@ -49,7 +64,14 @@ func backendManager(backendChan chan map[string]*roundrobin.RoundRobin, updateCh
 //}
 
 func listApplicationsHandler(w http.ResponseWriter, r *http.Request) {
-	spew.Fprint(w, backends)
+	json, err := json.Marshal(backends)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(json)
 }
 
 func statusServer(port int) *http.Server {
@@ -66,7 +88,7 @@ func statusServer(port int) *http.Server {
 
 func main() {
 	kingpin.Parse()
-	backendChan := make(chan map[string]*roundrobin.RoundRobin)
+	backendChan := make(chan map[string][]Backend)
 	updateChan := make(chan time.Time)
 
 	go func() {
@@ -79,6 +101,7 @@ func main() {
 			select {
 			case bs := <-backendChan:
 				backends = bs
+				rrbBackends = createRoundRobinBackends(backends)
 				//backends["localhost"] =
 			}
 		}
@@ -90,7 +113,7 @@ func main() {
 	redirect := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		//fmt.Printf("%v %v\n", req.RemoteAddr, req.Host)
 
-		if backend := backends[req.Host]; backend != nil {
+		if backend := rrbBackends[req.Host]; backend != nil {
 			backend.ServeHTTP(w, req)
 		} else {
 			w.WriteHeader(http.StatusNotFound)

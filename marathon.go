@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/vulcand/oxy/roundrobin"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -117,8 +116,8 @@ func doTrackUpdates(marathonEventChan chan RawEvent) error {
 	}
 }
 
-func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
-	backends := make(map[string]*roundrobin.RoundRobin)
+func updateBackends() (map[string][]Backend, error) {
+	backends := make(map[string][]Backend)
 
 	apps, appsErr := getApps()
 	tasks, tasksErr := getTasks()
@@ -145,7 +144,7 @@ func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
 			for portIndex, actualPort := range task.Ports {
 				domainWithPort := strconv.Itoa(portIndex) + "." + domain + ":" + strconv.Itoa(*httpPort)
 				if _, ok := backends[domainWithPort]; !ok {
-					backends[domainWithPort], _ = roundrobin.New(forwarder)
+					backends[domainWithPort] = make([]Backend, 0)
 				}
 
 				url, err := url.Parse(fmt.Sprintf("http://%s:%v", task.Host, actualPort))
@@ -153,7 +152,7 @@ func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
 					continue
 				}
 
-				backends[domainWithPort].UpsertServer(url)
+				backends[domainWithPort] = append(backends[domainWithPort], Backend{Url: url})
 				//fmt.Printf("%v -> %v\n", domainWithPort, url)
 			}
 		}
@@ -162,7 +161,6 @@ func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
 		for label, exposedDomain := range app.Labels {
 			if strings.HasPrefix(label, labelPrefix) {
 				domainWithPort := exposedDomain + ":" + strconv.Itoa(*httpPort)
-				frontend := Frontend{}
 				port, err := strconv.Atoi(label[len(labelPrefix):len(label)])
 				if err != nil {
 					continue
@@ -174,12 +172,10 @@ func updateBackends() (map[string]*roundrobin.RoundRobin, error) {
 					}
 
 					if _, ok := backends[domainWithPort]; !ok {
-						backends[domainWithPort], _ = roundrobin.New(forwarder)
+						backends[domainWithPort] = make([]Backend, 0)
 					}
 
-					frontend.Backends = append(frontend.Backends, Backend{*url})
-
-					backends[domainWithPort].UpsertServer(url)
+					backends[domainWithPort] = append(backends[domainWithPort], Backend{Url: url})
 					//fmt.Printf("%v -> %v\n", exposedDomain, url)
 				}
 			}
