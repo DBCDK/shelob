@@ -8,7 +8,6 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	"log"
 	"net/http"
-	"net/url"
 	"strconv"
 	"time"
 )
@@ -21,6 +20,7 @@ var (
 	marathonAuth   = kingpin.Flag("marathon-auth", "username:password for marathon").String()
 	updateInterval = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
 	insecureSSL    = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
+	shelobItself   = http.NewServeMux()
 	forwarder, _   = forward.New()
 	backends       = make(map[string][]Backend)
 	rrbBackends    = make(map[string]*roundrobin.RoundRobin)
@@ -61,10 +61,6 @@ func backendManager(backendChan chan map[string][]Backend, updateChan chan time.
 	}
 }
 
-//func requestHandler() *http.ServeMux {
-//	mux := http.NewServeMux()
-//}
-
 func listApplicationsHandler(w http.ResponseWriter, r *http.Request) {
 	json, err := json.Marshal(backends)
 	if err != nil {
@@ -76,18 +72,9 @@ func listApplicationsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(json)
 }
 
-func statusServer(port int) *http.Server {
-	mux := http.NewServeMux()
-	mux.Handle("/", http.HandlerFunc(listApplicationsHandler))
-
-	server := &http.Server{
-		Addr:    ":" + strconv.Itoa(port),
-		Handler: mux,
-	}
-
-
-
-	return server
+func routeToSelf(req *http.Request) bool {
+	strPort := strconv.Itoa(*httpPort)
+	return (req.Host == "localhost:"+strPort) || (req.Host == *masterDomain+":"+strPort)
 }
 
 func main() {
@@ -95,12 +82,7 @@ func main() {
 	backendChan := make(chan map[string][]Backend)
 	updateChan := make(chan time.Time)
 
-	statusUrl, _ := url.Parse("http://localhost:8079")
-
-	go func() {
-		server := statusServer(8079)
-		server.ListenAndServe()
-	}()
+	shelobItself.Handle("/", http.HandlerFunc(listApplicationsHandler))
 
 	go func() {
 		for {
@@ -108,8 +90,6 @@ func main() {
 			case bs := <-backendChan:
 				backends = bs
 				rrbBackends = createRoundRobinBackends(backends)
-				rrbBackends["localhost:"+strconv.Itoa(*httpPort)], _ = roundrobin.New(forwarder)
-				rrbBackends["localhost:"+strconv.Itoa(*httpPort)].UpsertServer(statusUrl)
 			}
 		}
 	}()
@@ -120,7 +100,9 @@ func main() {
 	redirect := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		//fmt.Printf("%v %v\n", req.RemoteAddr, req.Host)
 
-		if backend := rrbBackends[req.Host]; backend != nil {
+		if routeToSelf(req) {
+			shelobItself.ServeHTTP(w, req)
+		} else if backend := rrbBackends[req.Host]; backend != nil {
 			backend.ServeHTTP(w, req)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
