@@ -1,14 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
-	"encoding/json"
 )
 
 var (
@@ -83,6 +85,8 @@ func statusServer(port int) *http.Server {
 		Handler: mux,
 	}
 
+
+
 	return server
 }
 
@@ -90,6 +94,8 @@ func main() {
 	kingpin.Parse()
 	backendChan := make(chan map[string][]Backend)
 	updateChan := make(chan time.Time)
+
+	statusUrl, _ := url.Parse("http://localhost:8079")
 
 	go func() {
 		server := statusServer(8079)
@@ -102,7 +108,8 @@ func main() {
 			case bs := <-backendChan:
 				backends = bs
 				rrbBackends = createRoundRobinBackends(backends)
-				//backends["localhost"] =
+				rrbBackends["localhost:"+strconv.Itoa(*httpPort)], _ = roundrobin.New(forwarder)
+				rrbBackends["localhost:"+strconv.Itoa(*httpPort)].UpsertServer(statusUrl)
 			}
 		}
 	}()
@@ -125,5 +132,5 @@ func main() {
 		Addr:    ":" + strconv.Itoa(*httpPort),
 		Handler: redirect,
 	}
-	s.ListenAndServe()
+	log.Fatal(s.ListenAndServe())
 }

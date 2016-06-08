@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"net/url"
 	"time"
-	"encoding/json"
 )
 
 type Frontend struct {
