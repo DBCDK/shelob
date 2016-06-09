@@ -6,6 +6,7 @@ import (
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"html/template"
 	"log"
 	"net/http"
 	"strconv"
@@ -62,6 +63,31 @@ func backendManager(backendChan chan map[string][]Backend, updateChan chan time.
 }
 
 func listApplicationsHandler(w http.ResponseWriter, r *http.Request) {
+	var page = `
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>{{.Domain}}</title>
+	</head>
+	<body>
+		<h1>Available applications:</h1>
+		<ul>
+			{{range $domain, $backends := . }}<li><a href="http://{{ $domain }}">{{ $domain }}</a></li>
+			{{ end }}
+		</ul>
+	</body>
+</html>`
+
+	t, err := template.New("t").Parse(page)
+	if err != nil {
+		panic(err)
+	}
+
+	t.Execute(w, backends)
+}
+
+func listApplicationsHandlerJson(w http.ResponseWriter, r *http.Request) {
 	json, err := json.Marshal(backends)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -83,6 +109,7 @@ func main() {
 	updateChan := make(chan time.Time)
 
 	shelobItself.Handle("/", http.HandlerFunc(listApplicationsHandler))
+	shelobItself.Handle("/api/applications", http.HandlerFunc(listApplicationsHandlerJson))
 
 	go func() {
 		for {
