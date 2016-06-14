@@ -1,0 +1,7 @@
+package: github.com/dbcdk/shelob
+import:
+- package: github.com/vulcand/oxy
+  subpackages:
+  - forward
+  - roundrobin
+- package: gopkg.in/alecthomas/kingpin.v2
