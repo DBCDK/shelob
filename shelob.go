@@ -16,6 +16,7 @@ import (
 var (
 	app            = kingpin.New("timeattack", "Replays http requests").Version("1.0")
 	httpPort       = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
+	httpPortAlias  = kingpin.Flag("port-alias", "Http port Shelob is actually exposed on").Int()
 	masterDomain   = kingpin.Flag("domain", "All apps will by default be exposed as a subdomain to this domain").Default("localhost").String()
 	marathons      = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
 	marathonAuth   = kingpin.Flag("marathon-auth", "username:password for marathon").String()
@@ -63,6 +64,21 @@ func backendManager(backendChan chan map[string][]Backend, updateChan chan time.
 }
 
 func listApplicationsHandler(w http.ResponseWriter, r *http.Request) {
+	data := make(map[string][]Backend)
+
+	port := *httpPort
+	if *httpPortAlias != 0 {
+		port = *httpPortAlias
+	}
+
+	for domain, backends := range backends {
+		if port != 80 {
+			domain = domain + ":" + strconv.Itoa(port)
+		}
+
+		data[domain] = backends
+	}
+
 	var page = `
 <!DOCTYPE html>
 <html>
@@ -84,7 +100,11 @@ func listApplicationsHandler(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	t.Execute(w, backends)
+	err = t.Execute(w, data)
+
+	if err != nil {
+		panic(err)
+	}
 }
 
 func listApplicationsHandlerJson(w http.ResponseWriter, r *http.Request) {
@@ -99,8 +119,7 @@ func listApplicationsHandlerJson(w http.ResponseWriter, r *http.Request) {
 }
 
 func routeToSelf(req *http.Request) bool {
-	strPort := strconv.Itoa(*httpPort)
-	return (req.Host == "localhost:"+strPort) || (req.Host == *masterDomain+":"+strPort)
+	return (req.Host == "localhost") || (req.Host == *masterDomain)
 }
 
 func main() {
@@ -125,11 +144,11 @@ func main() {
 	go trackUpdates(updateChan)
 
 	redirect := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		//fmt.Printf("%v %v\n", req.RemoteAddr, req.Host)
+		domain := stripPortFromDomain(req.Host)
 
-		if routeToSelf(req) {
+		if (domain == "localhost") || (domain == *masterDomain) {
 			shelobItself.ServeHTTP(w, req)
-		} else if backend := rrbBackends[req.Host]; backend != nil {
+		} else if backend := rrbBackends[domain]; backend != nil {
 			backend.ServeHTTP(w, req)
 		} else {
 			w.WriteHeader(http.StatusNotFound)

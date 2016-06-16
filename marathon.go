@@ -142,9 +142,9 @@ func updateBackends() (map[string][]Backend, error) {
 
 		for _, task := range indexedTasks[appId] {
 			for portIndex, actualPort := range task.Ports {
-				domainWithPort := strconv.Itoa(portIndex) + "." + domain + ":" + strconv.Itoa(*httpPort)
-				if _, ok := backends[domainWithPort]; !ok {
-					backends[domainWithPort] = make([]Backend, 0)
+				appDomain := strconv.Itoa(portIndex) + "." + domain
+				if _, ok := backends[appDomain]; !ok {
+					backends[appDomain] = make([]Backend, 0)
 				}
 
 				url, err := url.Parse(fmt.Sprintf("http://%s:%v", task.Host, actualPort))
@@ -152,7 +152,7 @@ func updateBackends() (map[string][]Backend, error) {
 					continue
 				}
 
-				backends[domainWithPort] = append(backends[domainWithPort], Backend{Url: url})
+				backends[appDomain] = append(backends[appDomain], Backend{Url: url})
 				//fmt.Printf("%v -> %v\n", domainWithPort, url)
 			}
 		}
@@ -160,7 +160,6 @@ func updateBackends() (map[string][]Backend, error) {
 		// create custom domain mappings
 		for label, exposedDomain := range app.Labels {
 			if strings.HasPrefix(label, labelPrefix) {
-				domainWithPort := exposedDomain + ":" + strconv.Itoa(*httpPort)
 				port, err := strconv.Atoi(label[len(labelPrefix):len(label)])
 				if err != nil {
 					continue
@@ -171,11 +170,11 @@ func updateBackends() (map[string][]Backend, error) {
 						continue
 					}
 
-					if _, ok := backends[domainWithPort]; !ok {
-						backends[domainWithPort] = make([]Backend, 0)
+					if _, ok := backends[exposedDomain]; !ok {
+						backends[exposedDomain] = make([]Backend, 0)
 					}
 
-					backends[domainWithPort] = append(backends[domainWithPort], Backend{Url: url})
+					backends[exposedDomain] = append(backends[exposedDomain], Backend{Url: url})
 					//fmt.Printf("%v -> %v\n", exposedDomain, url)
 				}
 			}
