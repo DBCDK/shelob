@@ -165,6 +165,11 @@ func updateBackends() (map[string][]Backend, error) {
 					continue
 				}
 				for _, task := range indexedTasks[appId] {
+					if (port+1 > len(task.Ports)) {
+						fmt.Printf("Ignoring illegal port-index %v for app %s\n", port, task.AppId)
+						continue
+					}
+
 					url, err := url.Parse(fmt.Sprintf("http://%s:%v", task.Host, task.Ports[port]))
 					if err != nil {
 						continue

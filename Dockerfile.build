@@ -1,0 +1,5 @@
+FROM golang:1.6
+MAINTAINER Adam F. Tulinius <atu@dbc.dk>
+
+ADD shelob /shelob
+CMD ["/shelob"]
