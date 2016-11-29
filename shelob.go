@@ -150,7 +150,7 @@ func main() {
 	}()
 
 	go backendManager(backendChan, updateChan)
-	go trackUpdates(updateChan)
+	// go trackUpdates(updateChan)
 
 	redirect := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		t__start := time.Now().UnixNano()
