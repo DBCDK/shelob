@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"github.com/uber-go/zap"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -43,7 +44,10 @@ func trackUpdates(updateChan chan time.Time) {
 			}
 
 		case <-time.After(time.Second * time.Duration(*updateInterval)):
-			fmt.Printf("No changes for a while, forcing reload..\n")
+			logger.Info("No changes for a while, forcing reload",
+				appField,
+				eventField("reload"),
+			)
 		}
 
 	}()
@@ -95,7 +99,14 @@ func doTrackUpdates(marathonEventChan chan RawEvent) error {
 			return err
 		}
 
-		fmt.Printf("Event %v (%v bytes): %v\n", eventId, len(line), string(line))
+		logger.Info("marathon event",
+			appField,
+			eventField("marathonEvent"),
+			zap.Nest("marathon",
+				zap.Int("eventId", eventId),
+				zap.String("event", string(line)),
+			),
+		)
 
 		switch {
 		case bytes.HasPrefix(line, []byte("event:")):
@@ -109,7 +120,13 @@ func doTrackUpdates(marathonEventChan chan RawEvent) error {
 			}
 			event = RawEvent{}
 		default:
-			println("Ignored event: " + string(line))
+			logger.Info("ignored marathon event",
+				appField,
+				eventField("marathonEvent"),
+				zap.Nest("marathon",
+					zap.Int("ignored", eventId),
+				),
+			)
 		}
 
 		eventId += 1
@@ -165,8 +182,16 @@ func updateBackends() (map[string][]Backend, error) {
 					continue
 				}
 				for _, task := range indexedTasks[appId] {
-					if (port+1 > len(task.Ports)) {
-						fmt.Printf("Ignoring illegal port-index %v for app %s\n", port, task.AppId)
+					if port+1 > len(task.Ports) {
+						logger.Info("illegal port-index",
+							appField,
+							eventField("invalidMarathonApp"),
+							zap.Nest("marathon",
+								zap.String("appId", appId),
+								zap.Int("lastPort", len(task.Ports)-1),
+								zap.Int("requestedPort", port),
+							),
+						)
 						continue
 					}
 

@@ -2,12 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"github.com/uber-go/zap"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"html/template"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -26,6 +25,9 @@ var (
 	forwarder, _   = forward.New()
 	backends       = make(map[string][]Backend)
 	rrbBackends    = make(map[string]*roundrobin.RoundRobin)
+	logger         = zap.New(
+		zap.NewJSONEncoder(zap.RFC3339Formatter("timestamp")),
+	)
 )
 
 func createRoundRobinBackends(backends map[string][]Backend) map[string]*roundrobin.RoundRobin {
@@ -56,9 +58,16 @@ func backendManager(backendChan chan map[string][]Backend, updateChan chan time.
 		select {
 		case eventTime := <-updateChan:
 			delay := time.Now().Sub(eventTime)
-			fmt.Printf("Update requested %v ago\n", delay)
+			logger.Info("Update requested",
+				appField,
+				eventField("reload"),
+				zap.Duration("delay", delay),
+			)
 		case <-time.After(time.Second * time.Duration(*updateInterval)):
-			fmt.Printf("No changes for a while, forcing reload..\n")
+			logger.Info("No changes for a while, forcing reload",
+				appField,
+				eventField("reload"),
+			)
 		}
 	}
 }
@@ -144,7 +153,9 @@ func main() {
 	go trackUpdates(updateChan)
 
 	redirect := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		t__start := time.Now().UnixNano()
 		domain := stripPortFromDomain(req.Host)
+		status := http.StatusOK
 
 		if (domain == "localhost") || (domain == *masterDomain) {
 			shelobItself.ServeHTTP(w, req)
@@ -152,13 +163,40 @@ func main() {
 			backend.ServeHTTP(w, req)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
-			//fmt.Fprint(w, "not found")
+			status = http.StatusNotFound
 		}
+
+		duration := float64(time.Now().UnixNano()-t__start) / 1000000
+		logger.Info("",
+			appField,
+			eventField("request"),
+			zap.Nest("request",
+				zap.Nest("user",
+					zap.String("addr", req.RemoteAddr),
+					zap.String("agent", req.UserAgent()),
+				),
+				zap.String("domain", domain),
+				zap.String("url", req.URL.String()),
+				zap.String("method", req.Method),
+				zap.String("protocol", req.Proto),
+				zap.Int("status", status),
+				zap.Float64("duration", duration),
+			),
+		)
 	})
+
+	logger.Info("shelob started",
+		appField,
+		eventField("started"),
+		zap.Int("port", *httpPort),
+	)
 
 	s := &http.Server{
 		Addr:    ":" + strconv.Itoa(*httpPort),
 		Handler: redirect,
 	}
-	log.Fatal(s.ListenAndServe())
+	logger.Fatal(s.ListenAndServe().Error(),
+		appField,
+		eventField("shutdown"),
+	)
 }
