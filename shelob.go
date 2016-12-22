@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	app            = kingpin.New("timeattack", "Replays http requests").Version("1.0")
+	app            = kingpin.New("shelob", "Automatically updated HTTP reverse proxy for Marathon").Version("1.0")
 	httpPort       = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
 	httpPortAlias  = kingpin.Flag("port-alias", "Http port Shelob is actually exposed on").Int()
 	masterDomain   = kingpin.Flag("domain", "All apps will by default be exposed as a subdomain to this domain").Default("localhost").String()
