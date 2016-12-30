@@ -10,12 +10,12 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"strings"
 )
 
 var (
 	app            = kingpin.New("shelob", "Automatically updated HTTP reverse proxy for Marathon").Version("1.0")
 	httpPort       = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
-	httpPortAlias  = kingpin.Flag("port-alias", "Http port Shelob is actually exposed on").Int()
 	masterDomain   = kingpin.Flag("domain", "All apps will by default be exposed as a subdomain to this domain").Default("localhost").String()
 	marathons      = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
 	marathonAuth   = kingpin.Flag("marathon-auth", "username:password for marathon").String()
@@ -80,15 +80,15 @@ func backendManager(backendChan chan map[string][]Backend, updateChan chan time.
 
 func listApplicationsHandler(w http.ResponseWriter, r *http.Request) {
 	data := make(map[string][]Backend)
+	port := "80"
 
-	port := *httpPort
-	if *httpPortAlias != 0 {
-		port = *httpPortAlias
+	if strings.Contains(r.Host, ":") {
+		port = strings.SplitN(r.Host, ":", 2)[1]
 	}
 
 	for domain, backends := range backends {
-		if port != 80 {
-			domain = domain + ":" + strconv.Itoa(port)
+		if port != "80" {
+			domain = domain + ":" + port
 		}
 
 		data[domain] = backends
