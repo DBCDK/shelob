@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/uber-go/zap"
+	log "github.com/Sirupsen/logrus"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -25,10 +25,16 @@ var (
 	forwarder, _   = forward.New()
 	backends       = make(map[string][]Backend)
 	rrbBackends    = make(map[string]*roundrobin.RoundRobin)
-	logger         = zap.New(
-		zap.NewJSONEncoder(zap.RFC3339Formatter("timestamp")),
-	)
 )
+
+func init() {
+	log.SetFormatter(&log.JSONFormatter{
+		FieldMap: log.FieldMap{
+			log.FieldKeyTime: "timestamp",
+		},
+	})
+	log.SetLevel(log.DebugLevel)
+}
 
 func createRoundRobinBackends(backends map[string][]Backend) map[string]*roundrobin.RoundRobin {
 	rrbBackends := make(map[string]*roundrobin.RoundRobin)
@@ -58,16 +64,16 @@ func backendManager(backendChan chan map[string][]Backend, updateChan chan time.
 		select {
 		case eventTime := <-updateChan:
 			delay := time.Now().Sub(eventTime)
-			logger.Info("Update requested",
-				appField,
-				eventField("reload"),
-				zap.Duration("delay", delay),
-			)
+			log.WithFields(log.Fields{
+				"app":   "shelob",
+				"event": "reload",
+				"delay": delay.String(),
+			}).Info("Update requested")
 		case <-time.After(time.Second * time.Duration(*updateInterval)):
-			logger.Info("No changes for a while, forcing reload",
-				appField,
-				eventField("reload"),
-			)
+			log.WithFields(log.Fields{
+				"app":   "shelob",
+				"event": "reload",
+			}).Info("No changes for a while, forcing reload")
 		}
 	}
 }
@@ -167,36 +173,36 @@ func main() {
 		}
 
 		duration := float64(time.Now().UnixNano()-t__start) / 1000000
-		logger.Info("",
-			appField,
-			eventField("request"),
-			zap.Nest("request",
-				zap.Nest("user",
-					zap.String("addr", req.RemoteAddr),
-					zap.String("agent", req.UserAgent()),
-				),
-				zap.String("domain", domain),
-				zap.String("url", req.URL.String()),
-				zap.String("method", req.Method),
-				zap.String("protocol", req.Proto),
-				zap.Int("status", status),
-				zap.Float64("duration", duration),
-			),
-		)
+		log.WithFields(log.Fields{
+			"app":   "shelob",
+			"event": "requets",
+			"request": log.Fields{
+				"duration": duration,
+				"user": log.Fields{
+					"addr":  req.RemoteAddr,
+					"agent": req.UserAgent(),
+				},
+				"domain":   domain,
+				"method":   req.Method,
+				"protocol": req.Proto,
+				"status":   status,
+				"url":      req.URL.String(),
+			},
+		}).Info("")
 	})
 
-	logger.Info("shelob started",
-		appField,
-		eventField("started"),
-		zap.Int("port", *httpPort),
-	)
+	log.WithFields(log.Fields{
+		"app":   "shelob",
+		"event": "started",
+		"port":  *httpPort,
+	}).Info("shelob started")
 
 	s := &http.Server{
 		Addr:    ":" + strconv.Itoa(*httpPort),
 		Handler: redirect,
 	}
-	logger.Fatal(s.ListenAndServe().Error(),
-		appField,
-		eventField("shutdown"),
-	)
+	log.WithFields(log.Fields{
+		"app":   "shelob",
+		"event": "shutdown",
+	}).Fatal(s.ListenAndServe())
 }

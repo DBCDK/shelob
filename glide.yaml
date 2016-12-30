@@ -5,4 +5,4 @@ import:
   - forward
   - roundrobin
 - package: gopkg.in/alecthomas/kingpin.v2
-- package: github.com/uber-go/zap
+- package: github.com/Sirupsen/logrus

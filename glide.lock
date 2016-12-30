@@ -1,5 +1,5 @@
-hash: 2da1ae714f24d3509c8ed0e525132c12421191c2248b5dc6eadbdb183a7b4dca
-updated: 2016-11-29T08:08:48.403473618+01:00
+hash: 6fc92e40b1c0aaef931b0c93e2469d7fd189f9a57f68d95e63fdd97653231cc6
+updated: 2016-12-30T13:34:40.639632193+01:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -13,10 +13,6 @@ imports:
   version: fd192d755b00c968d312d23f521eb0cdc6f66bd0
 - name: github.com/Sirupsen/logrus
   version: e400ff7861bce9661cf37c162ce3b7b303baf333
-- name: github.com/uber-go/atomic
-  version: 9e99152552a6ce13fa3b2ce4a9c4fb117cca4506
-- name: github.com/uber-go/zap
-  version: 11e8d8f6b3c9c574462f8278f3f2b7eb56b12e27
 - name: github.com/vulcand/oxy
   version: 9d07313adea3bb9c7817ea887df6ac79648675f9
   subpackages:

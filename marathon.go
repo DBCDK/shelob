@@ -6,7 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/uber-go/zap"
+	log "github.com/Sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -44,10 +44,10 @@ func trackUpdates(updateChan chan time.Time) {
 			}
 
 		case <-time.After(time.Second * time.Duration(*updateInterval)):
-			logger.Info("No changes for a while, forcing reload",
-				appField,
-				eventField("reload"),
-			)
+			log.WithFields(log.Fields{
+				"app":   "shelob",
+				"event": "reload",
+			}).Info("No changes for a while, forcing reload")
 		}
 
 	}()
@@ -99,14 +99,14 @@ func doTrackUpdates(marathonEventChan chan RawEvent) error {
 			return err
 		}
 
-		logger.Info("marathon event",
-			appField,
-			eventField("marathonEvent"),
-			zap.Nest("marathon",
-				zap.Int("eventId", eventId),
-				zap.String("event", string(line)),
-			),
-		)
+		log.WithFields(log.Fields{
+			"app":   "shelob",
+			"event": "marathonEvent",
+			"marathon": log.Fields{
+				"eventId": eventId,
+				"event":   string(line),
+			},
+		}).Info("marathon event")
 
 		switch {
 		case bytes.HasPrefix(line, []byte("event:")):
@@ -120,13 +120,14 @@ func doTrackUpdates(marathonEventChan chan RawEvent) error {
 			}
 			event = RawEvent{}
 		default:
-			logger.Info("ignored marathon event",
-				appField,
-				eventField("marathonEvent"),
-				zap.Nest("marathon",
-					zap.Int("ignored", eventId),
-				),
-			)
+			log.WithFields(log.Fields{
+				"app":   "shelob",
+				"event": "marathonEvent",
+				"marathon": log.Fields{
+					"ignored": eventId,
+				},
+			}).Info("ignored marathon event")
+
 		}
 
 		eventId += 1
@@ -183,15 +184,15 @@ func updateBackends() (map[string][]Backend, error) {
 				}
 				for _, task := range indexedTasks[appId] {
 					if port+1 > len(task.Ports) {
-						logger.Info("illegal port-index",
-							appField,
-							eventField("invalidMarathonApp"),
-							zap.Nest("marathon",
-								zap.String("appId", appId),
-								zap.Int("lastPort", len(task.Ports)-1),
-								zap.Int("requestedPort", port),
-							),
-						)
+						log.WithFields(log.Fields{
+							"app":   "shelob",
+							"event": "invalidMarathonApp",
+							"marathon": log.Fields{
+								"appId":         appId,
+								"lastPort":      len(task.Ports) - 1,
+								"requestedPort": port,
+							},
+						}).Info("illegal port-index")
 						continue
 					}
 
