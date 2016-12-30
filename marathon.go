@@ -260,7 +260,7 @@ func getTasks() (tasks Tasks, err error) {
 	}
 	client := &http.Client{Transport: tr}
 
-	req, err := http.NewRequest("GET", (*marathons)[0]+"/v2/tasks", nil)
+	req, err := http.NewRequest("GET", (*marathons)[0]+"/v2/tasks?status=running", nil)
 	if err != nil {
 		return tasks, err
 	}
