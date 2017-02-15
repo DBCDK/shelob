@@ -158,20 +158,22 @@ func updateBackends() (map[string][]Backend, error) {
 		reversedAppIdParts = append(reversedAppIdParts, *masterDomain)
 		domain := strings.Join(reversedAppIdParts, ".")
 
-		for _, task := range indexedTasks[appId] {
-			for portIndex, actualPort := range task.Ports {
-				appDomain := strconv.Itoa(portIndex) + "." + domain
-				if _, ok := backends[appDomain]; !ok {
-					backends[appDomain] = make([]Backend, 0)
-				}
+		if masterDomain != nil {
+			for _, task := range indexedTasks[appId] {
+				for portIndex, actualPort := range task.Ports {
+					appDomain := strconv.Itoa(portIndex) + "." + domain
+					if _, ok := backends[appDomain]; !ok {
+						backends[appDomain] = make([]Backend, 0)
+					}
 
-				url, err := url.Parse(fmt.Sprintf("http://%s:%v", task.Host, actualPort))
-				if err != nil {
-					continue
-				}
+					url, err := url.Parse(fmt.Sprintf("http://%s:%v", task.Host, actualPort))
+					if err != nil {
+						continue
+					}
 
-				backends[appDomain] = append(backends[appDomain], Backend{Url: url})
-				//fmt.Printf("%v -> %v\n", domainWithPort, url)
+					backends[appDomain] = append(backends[appDomain], Backend{Url: url})
+					//fmt.Printf("%v -> %v\n", domainWithPort, url)
+				}
 			}
 		}
 

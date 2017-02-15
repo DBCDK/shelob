@@ -16,7 +16,7 @@ import (
 var (
 	app            = kingpin.New("shelob", "Automatically updated HTTP reverse proxy for Marathon").Version("1.0")
 	httpPort       = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
-	masterDomain   = kingpin.Flag("domain", "All apps will by default be exposed as a subdomain to this domain").Default("localhost").String()
+	masterDomain   = kingpin.Flag("domain", "This will enable all apps to by default be exposed as a subdomain to this domain.").String()
 	marathons      = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
 	marathonAuth   = kingpin.Flag("marathon-auth", "username:password for marathon").String()
 	updateInterval = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
