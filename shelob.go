@@ -22,7 +22,7 @@ var (
 	updateInterval = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
 	insecureSSL    = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	shelobItself   = http.NewServeMux()
-	forwarder, _   = forward.New()
+	forwarder, _   = forward.New(forward.PassHostHeader(true))
 	backends       = make(map[string][]Backend)
 	rrbBackends    = make(map[string]*roundrobin.RoundRobin)
 )
