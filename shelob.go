@@ -163,13 +163,27 @@ func main() {
 		domain := stripPortFromDomain(req.Host)
 		status := http.StatusOK
 
-		if (domain == "localhost") || (domain == *masterDomain) {
+		tooManyXForwardedHostHeaders := false;
+
+		if xForwardedHost, ok := req.Header["X-Forwarded-Host"]; ok {
+			if (len(xForwardedHost) == 1) {
+				req.Host = xForwardedHost[0]
+			} else {
+				tooManyXForwardedHostHeaders = true;
+			}
+			delete(req.Header, "X-Forwarded-Host")
+		}
+
+		if (tooManyXForwardedHostHeaders) {
+			status = http.StatusBadRequest
+			http.Error(w, "X-Forwarded-Host must not be repeated", status)
+		} else if (domain == "localhost") || (domain == *masterDomain) {
 			shelobItself.ServeHTTP(w, req)
 		} else if backend := rrbBackends[domain]; backend != nil {
 			backend.ServeHTTP(w, req)
 		} else {
-			w.WriteHeader(http.StatusNotFound)
 			status = http.StatusNotFound
+			http.Error(w, http.StatusText(status), status)
 		}
 
 		duration := float64(time.Now().UnixNano()-t__start) / 1000000
