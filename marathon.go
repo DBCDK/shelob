@@ -148,17 +148,16 @@ func updateBackends() (map[string][]Backend, error) {
 
 	var indexedApps = indexApps(apps)
 	var indexedTasks = indexTasks(tasks)
-	var labelPrefix = "expose.port."
+	var labelPrefix = *marathonLabelPrefix + ".port."
 
 	for appId, app := range indexedApps {
-		// create default domain mappings
-		// appId /foo/bar -> $portId.bar.foo.$defaultDomain
-		appIdParts := strings.Split(appId[1:], "/")
-		reversedAppIdParts := reverseStringArray(appIdParts)
-		reversedAppIdParts = append(reversedAppIdParts, *masterDomain)
-		domain := strings.Join(reversedAppIdParts, ".")
-
-		if masterDomain != nil {
+		if *masterDomain != "" {
+			// create default domain mappings
+			// appId /foo/bar -> $portId.bar.foo.$defaultDomain
+			appIdParts := strings.Split(appId[1:], "/")
+			reversedAppIdParts := reverseStringArray(appIdParts)
+			reversedAppIdParts = append(reversedAppIdParts, *masterDomain)
+			domain := strings.Join(reversedAppIdParts, ".")
 			for _, task := range indexedTasks[appId] {
 				for portIndex, actualPort := range task.Ports {
 					appDomain := strconv.Itoa(portIndex) + "." + domain

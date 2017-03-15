@@ -19,6 +19,7 @@ var (
 	masterDomain   = kingpin.Flag("domain", "This will enable all apps to by default be exposed as a subdomain to this domain.").String()
 	marathons      = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
 	marathonAuth   = kingpin.Flag("marathon-auth", "username:password for marathon").String()
+	marathonLabelPrefix   = kingpin.Flag("marathon-label-prefix", "prefix for marathon labels used for configuration").Default("expose").String()
 	updateInterval = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
 	insecureSSL    = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	shelobItself   = http.NewServeMux()
