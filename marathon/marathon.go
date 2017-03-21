@@ -1,4 +1,4 @@
-package main
+package marathon
 
 import (
 	"bufio"
@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"github.com/dbcdk/shelob/util"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -15,7 +16,7 @@ import (
 	"time"
 )
 
-func trackUpdates(updateChan chan time.Time) {
+func trackUpdates(config *util.Config, updateChan chan time.Time) {
 	marathonEventChan := make(chan RawEvent)
 	go func() {
 		select {
@@ -43,7 +44,7 @@ func trackUpdates(updateChan chan time.Time) {
 				println(string(rawEvent.Data))
 			}
 
-		case <-time.After(time.Second * time.Duration(*updateInterval)):
+		case <-time.After(time.Second * time.Duration(config.UpdateInterval)):
 			log.WithFields(log.Fields{
 				"app":   "shelob",
 				"event": "reload",
@@ -53,7 +54,7 @@ func trackUpdates(updateChan chan time.Time) {
 	}()
 
 	for {
-		err := doTrackUpdates(marathonEventChan)
+		err := doTrackUpdates(config, marathonEventChan)
 		if err != nil {
 			println("Error:")
 			println(err.Error())
@@ -62,20 +63,20 @@ func trackUpdates(updateChan chan time.Time) {
 	}
 }
 
-func doTrackUpdates(marathonEventChan chan RawEvent) error {
+func doTrackUpdates(config *util.Config, marathonEventChan chan RawEvent) error {
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: *insecureSSL},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: config.IgnoreSSLErrors},
 	}
 	client := &http.Client{Transport: tr}
 
-	req, err := http.NewRequest("GET", (*marathons)[0]+"/v2/events", nil)
+	req, err := http.NewRequest("GET", (config.Marathon.Urls)[0]+"/v2/events", nil)
 	if err != nil {
 		return err
 	}
 
 	// todo: validate the presence of ':' to avoid segfaults
-	if len(*marathonAuth) > 0 {
-		auth := strings.SplitN(*marathonAuth, ":", 2)
+	if len(config.Marathon.Auth) > 0 {
+		auth := strings.SplitN(config.Marathon.Auth, ":", 2)
 		req.SetBasicAuth(auth[0], auth[1])
 	}
 
@@ -134,11 +135,11 @@ func doTrackUpdates(marathonEventChan chan RawEvent) error {
 	}
 }
 
-func updateBackends() (map[string][]Backend, error) {
-	backends := make(map[string][]Backend)
+func UpdateBackends(config *util.Config) (map[string][]util.Backend, error) {
+	backends := make(map[string][]util.Backend)
 
-	apps, appsErr := getApps()
-	tasks, tasksErr := getTasks()
+	apps, appsErr := getApps(config)
+	tasks, tasksErr := getTasks(config)
 	if appsErr != nil {
 		return nil, appsErr
 	}
@@ -148,21 +149,21 @@ func updateBackends() (map[string][]Backend, error) {
 
 	var indexedApps = indexApps(apps)
 	var indexedTasks = indexTasks(tasks)
-	var labelPrefix = *marathonLabelPrefix + ".port."
+	var labelPrefix = config.Marathon.LabelPrefix + ".port."
 
 	for appId, app := range indexedApps {
-		if *masterDomain != "" {
+		if config.Domain != "" {
 			// create default domain mappings
 			// appId /foo/bar -> $portId.bar.foo.$defaultDomain
 			appIdParts := strings.Split(appId[1:], "/")
-			reversedAppIdParts := reverseStringArray(appIdParts)
-			reversedAppIdParts = append(reversedAppIdParts, *masterDomain)
+			reversedAppIdParts := util.ReverseStringArray(appIdParts)
+			reversedAppIdParts = append(reversedAppIdParts, config.Domain)
 			domain := strings.Join(reversedAppIdParts, ".")
 			for _, task := range indexedTasks[appId] {
 				for portIndex, actualPort := range task.Ports {
 					appDomain := strconv.Itoa(portIndex) + "." + domain
 					if _, ok := backends[appDomain]; !ok {
-						backends[appDomain] = make([]Backend, 0)
+						backends[appDomain] = make([]util.Backend, 0)
 					}
 
 					url, err := url.Parse(fmt.Sprintf("http://%s:%v", task.Host, actualPort))
@@ -170,7 +171,7 @@ func updateBackends() (map[string][]Backend, error) {
 						continue
 					}
 
-					backends[appDomain] = append(backends[appDomain], Backend{Url: url})
+					backends[appDomain] = append(backends[appDomain], util.Backend{Url: url})
 					//fmt.Printf("%v -> %v\n", domainWithPort, url)
 				}
 			}
@@ -203,10 +204,10 @@ func updateBackends() (map[string][]Backend, error) {
 					}
 
 					if _, ok := backends[exposedDomain]; !ok {
-						backends[exposedDomain] = make([]Backend, 0)
+						backends[exposedDomain] = make([]util.Backend, 0)
 					}
 
-					backends[exposedDomain] = append(backends[exposedDomain], Backend{Url: url})
+					backends[exposedDomain] = append(backends[exposedDomain], util.Backend{Url: url})
 					//fmt.Printf("%v -> %v\n", exposedDomain, url)
 				}
 			}
@@ -216,20 +217,20 @@ func updateBackends() (map[string][]Backend, error) {
 	return backends, nil
 }
 
-func getApps() (apps Apps, err error) {
+func getApps(config *util.Config) (apps Apps, err error) {
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: *insecureSSL},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: config.IgnoreSSLErrors},
 	}
 	client := &http.Client{Transport: tr}
 
-	req, err := http.NewRequest("GET", (*marathons)[0]+"/v2/apps", nil)
+	req, err := http.NewRequest("GET", (config.Marathon.Urls)[0]+"/v2/apps", nil)
 	if err != nil {
 		return apps, err
 	}
 
 	// todo: validate the presence of ':' to avoid segfaults
-	if len(*marathonAuth) > 0 {
-		auth := strings.SplitN(*marathonAuth, ":", 2)
+	if len(config.Marathon.Auth) > 0 {
+		auth := strings.SplitN(config.Marathon.Auth, ":", 2)
 		req.SetBasicAuth(auth[0], auth[1])
 	}
 
@@ -255,20 +256,20 @@ func getApps() (apps Apps, err error) {
 	return apps, nil
 }
 
-func getTasks() (tasks Tasks, err error) {
+func getTasks(config *util.Config) (tasks Tasks, err error) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	client := &http.Client{Transport: tr}
 
-	req, err := http.NewRequest("GET", (*marathons)[0]+"/v2/tasks?status=running", nil)
+	req, err := http.NewRequest("GET", (config.Marathon.Urls)[0]+"/v2/tasks?status=running", nil)
 	if err != nil {
 		return tasks, err
 	}
 
 	// todo: validate the presence of ':' to avoid segfaults
-	if len(*marathonAuth) > 0 {
-		auth := strings.SplitN(*marathonAuth, ":", 2)
+	if len(config.Marathon.Auth) > 0 {
+		auth := strings.SplitN(config.Marathon.Auth, ":", 2)
 		req.SetBasicAuth(auth[0], auth[1])
 	}
 

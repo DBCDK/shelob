@@ -1,32 +1,6 @@
-package main
+package marathon
 
-import (
-	"encoding/json"
-	"net/url"
-	"time"
-)
-
-type ShelobStatus struct {
-	Name string `json:"name"`
-	Up   bool   `json:"up"`
-}
-
-type Frontend struct {
-	Backends []Backend
-}
-
-type Backend struct {
-	Url *url.URL
-}
-
-// convert url to string when serializing
-func (backend Backend) MarshalJSON() ([]byte, error) {
-	return json.Marshal(struct {
-		Url string `json:"url"`
-	}{
-		Url: backend.Url.String(),
-	})
-}
+import "time"
 
 type Apps struct {
 	Apps []App

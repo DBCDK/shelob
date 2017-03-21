@@ -1,15 +1,16 @@
 package main
 
 import (
-	"encoding/json"
 	log "github.com/Sirupsen/logrus"
+	"github.com/dbcdk/shelob/handlers"
+	"github.com/dbcdk/shelob/marathon"
+	"github.com/dbcdk/shelob/signals"
+	"github.com/dbcdk/shelob/util"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"html/template"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -26,8 +27,6 @@ var (
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	shelobItself        = http.NewServeMux()
 	forwarder, _        = forward.New(forward.PassHostHeader(true))
-	backends            = make(map[string][]Backend)
-	rrbBackends         = make(map[string]*roundrobin.RoundRobin)
 	shutdownInProgress  = false
 )
 
@@ -40,7 +39,7 @@ func init() {
 	log.SetLevel(log.DebugLevel)
 }
 
-func createRoundRobinBackends(backends map[string][]Backend) map[string]*roundrobin.RoundRobin {
+func createRoundRobinBackends(backends map[string][]util.Backend) map[string]*roundrobin.RoundRobin {
 	rrbBackends := make(map[string]*roundrobin.RoundRobin)
 
 	for domain, backendList := range backends {
@@ -54,9 +53,9 @@ func createRoundRobinBackends(backends map[string][]Backend) map[string]*roundro
 	return rrbBackends
 }
 
-func backendManager(backendChan chan map[string][]Backend, updateChan chan time.Time) error {
+func backendManager(config *util.Config, backendChan chan map[string][]util.Backend, updateChan chan time.Time) error {
 	for {
-		backends, err := updateBackends()
+		backends, err := marathon.UpdateBackends(config)
 
 		if err != nil {
 			println("Error:")
@@ -82,73 +81,6 @@ func backendManager(backendChan chan map[string][]Backend, updateChan chan time.
 	}
 }
 
-func statusHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if shutdownInProgress {
-		b, _ := json.Marshal(ShelobStatus{Name: *instanceName, Up: false})
-		http.Error(w, string(b), http.StatusServiceUnavailable)
-	} else {
-		b, _ := json.Marshal(ShelobStatus{Name: *instanceName, Up: true})
-		w.Write(b)
-	}
-}
-
-func listApplicationsHandler(w http.ResponseWriter, r *http.Request) {
-	data := make(map[string][]Backend)
-	port := "80"
-
-	if strings.Contains(r.Host, ":") {
-		port = strings.SplitN(r.Host, ":", 2)[1]
-	}
-
-	for domain, backends := range backends {
-		if port != "80" {
-			domain = domain + ":" + port
-		}
-
-		data[domain] = backends
-	}
-
-	var page = `
-<!DOCTYPE html>
-<html>
-	<head>
-		<meta charset="UTF-8">
-		<title>{{.Domain}}</title>
-	</head>
-	<body>
-		<h1>Available applications:</h1>
-		<ul>
-			{{range $domain, $backends := . }}<li><a href="http://{{ $domain }}">{{ $domain }}</a></li>
-			{{ end }}
-		</ul>
-	</body>
-</html>`
-
-	t, err := template.New("t").Parse(page)
-	if err != nil {
-		panic(err)
-	}
-
-	err = t.Execute(w, data)
-
-	if err != nil {
-		panic(err)
-	}
-}
-
-func listApplicationsHandlerJson(w http.ResponseWriter, r *http.Request) {
-	json, err := json.Marshal(backends)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(json)
-}
-
 func routeToSelf(req *http.Request) bool {
 	return (req.Host == "localhost") || (req.Host == *masterDomain)
 }
@@ -156,31 +88,57 @@ func routeToSelf(req *http.Request) bool {
 func main() {
 	kingpin.Parse()
 
-	registerSignals()
+	config := util.Config{
+		HttpPort:        *httpPort,
+		IgnoreSSLErrors: *insecureSSL,
+		InstanceName:    *instanceName,
+		Marathon: util.MarathonConfig{
+			Urls:        *marathons,
+			Auth:        *marathonAuth,
+			LabelPrefix: *marathonLabelPrefix,
+		},
+		Domain:         *masterDomain,
+		ShutdownDelay:  *shutdownDelay,
+		UpdateInterval: *updateInterval,
+		Backends:       make(map[string][]util.Backend, 0),
+		RrbBackends:    make(map[string]*roundrobin.RoundRobin),
+	}
 
-	backendChan := make(chan map[string][]Backend)
+	shutdownChan := make(chan bool, 1)
+	go func() {
+		for {
+			select {
+			case shutdownState := <-shutdownChan:
+				shutdownInProgress = shutdownState
+			}
+		}
+	}()
+
+	signals.RegisterSignals(&config, shutdownChan)
+
+	backendChan := make(chan map[string][]util.Backend)
 	updateChan := make(chan time.Time)
 
-	shelobItself.Handle("/", http.HandlerFunc(listApplicationsHandler))
-	shelobItself.Handle("/status", http.HandlerFunc(statusHandler))
-	shelobItself.Handle("/api/applications", http.HandlerFunc(listApplicationsHandlerJson))
+	shelobItself.Handle("/", http.HandlerFunc(handlers.CreateListApplicationsHandler(&config)))
+	shelobItself.Handle("/api/applications", http.HandlerFunc(handlers.CreateListApplicationsHandlerJson(&config)))
+	shelobItself.Handle("/status", http.HandlerFunc(handlers.CreateStatusHandler(&config, &shutdownInProgress)))
 
 	go func() {
 		for {
 			select {
 			case bs := <-backendChan:
-				backends = bs
-				rrbBackends = createRoundRobinBackends(backends)
+				config.Backends = bs
+				config.RrbBackends = createRoundRobinBackends(bs)
 			}
 		}
 	}()
 
-	go backendManager(backendChan, updateChan)
+	go backendManager(&config, backendChan, updateChan)
 	// go trackUpdates(updateChan)
 
 	redirect := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		t__start := time.Now().UnixNano()
-		domain := stripPortFromDomain(req.Host)
+		domain := util.StripPortFromDomain(req.Host)
 		status := http.StatusOK
 
 		tooManyXForwardedHostHeaders := false
@@ -199,7 +157,7 @@ func main() {
 			http.Error(w, "X-Forwarded-Host must not be repeated", status)
 		} else if (domain == "localhost") || (domain == *masterDomain) {
 			shelobItself.ServeHTTP(w, req)
-		} else if backend := rrbBackends[domain]; backend != nil {
+		} else if backend := config.RrbBackends[domain]; backend != nil {
 			backend.ServeHTTP(w, req)
 		} else {
 			status = http.StatusNotFound
