@@ -16,16 +16,19 @@ import (
 var (
 	app                 = kingpin.New("shelob", "Automatically updated HTTP reverse proxy for Marathon").Version("1.0")
 	httpPort            = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
+	instanceName        = kingpin.Flag("name", "Instance name. Used in headers and on status pages.").String()
 	masterDomain        = kingpin.Flag("domain", "This will enable all apps to by default be exposed as a subdomain to this domain.").String()
 	marathons           = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
 	marathonAuth        = kingpin.Flag("marathon-auth", "username:password for marathon").String()
 	marathonLabelPrefix = kingpin.Flag("marathon-label-prefix", "prefix for marathon labels used for configuration").Default("expose").String()
 	updateInterval      = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
+	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	shelobItself        = http.NewServeMux()
 	forwarder, _        = forward.New(forward.PassHostHeader(true))
 	backends            = make(map[string][]Backend)
 	rrbBackends         = make(map[string]*roundrobin.RoundRobin)
+	shutdownInProgress  = false
 )
 
 func init() {
@@ -76,6 +79,18 @@ func backendManager(backendChan chan map[string][]Backend, updateChan chan time.
 				"event": "reload",
 			}).Info("No changes for a while, forcing reload")
 		}
+	}
+}
+
+func statusHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if shutdownInProgress {
+		b, _ := json.Marshal(ShelobStatus{Name: *instanceName, Up: false})
+		http.Error(w, string(b), http.StatusServiceUnavailable)
+	} else {
+		b, _ := json.Marshal(ShelobStatus{Name: *instanceName, Up: true})
+		w.Write(b)
 	}
 }
 
@@ -140,10 +155,14 @@ func routeToSelf(req *http.Request) bool {
 
 func main() {
 	kingpin.Parse()
+
+	registerSignals()
+
 	backendChan := make(chan map[string][]Backend)
 	updateChan := make(chan time.Time)
 
 	shelobItself.Handle("/", http.HandlerFunc(listApplicationsHandler))
+	shelobItself.Handle("/status", http.HandlerFunc(statusHandler))
 	shelobItself.Handle("/api/applications", http.HandlerFunc(listApplicationsHandlerJson))
 
 	go func() {

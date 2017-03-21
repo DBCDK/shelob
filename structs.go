@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+type ShelobStatus struct {
+	Name string `json:"name"`
+	Up   bool   `json:"up"`
+}
+
 type Frontend struct {
 	Backends []Backend
 }
