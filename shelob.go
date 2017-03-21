@@ -14,18 +14,18 @@ import (
 )
 
 var (
-	app            = kingpin.New("shelob", "Automatically updated HTTP reverse proxy for Marathon").Version("1.0")
-	httpPort       = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
-	masterDomain   = kingpin.Flag("domain", "This will enable all apps to by default be exposed as a subdomain to this domain.").String()
-	marathons      = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
-	marathonAuth   = kingpin.Flag("marathon-auth", "username:password for marathon").String()
-	marathonLabelPrefix   = kingpin.Flag("marathon-label-prefix", "prefix for marathon labels used for configuration").Default("expose").String()
-	updateInterval = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
-	insecureSSL    = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
-	shelobItself   = http.NewServeMux()
-	forwarder, _   = forward.New(forward.PassHostHeader(true))
-	backends       = make(map[string][]Backend)
-	rrbBackends    = make(map[string]*roundrobin.RoundRobin)
+	app                 = kingpin.New("shelob", "Automatically updated HTTP reverse proxy for Marathon").Version("1.0")
+	httpPort            = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
+	masterDomain        = kingpin.Flag("domain", "This will enable all apps to by default be exposed as a subdomain to this domain.").String()
+	marathons           = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
+	marathonAuth        = kingpin.Flag("marathon-auth", "username:password for marathon").String()
+	marathonLabelPrefix = kingpin.Flag("marathon-label-prefix", "prefix for marathon labels used for configuration").Default("expose").String()
+	updateInterval      = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
+	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
+	shelobItself        = http.NewServeMux()
+	forwarder, _        = forward.New(forward.PassHostHeader(true))
+	backends            = make(map[string][]Backend)
+	rrbBackends         = make(map[string]*roundrobin.RoundRobin)
 )
 
 func init() {
@@ -164,18 +164,18 @@ func main() {
 		domain := stripPortFromDomain(req.Host)
 		status := http.StatusOK
 
-		tooManyXForwardedHostHeaders := false;
+		tooManyXForwardedHostHeaders := false
 
 		if xForwardedHost, ok := req.Header["X-Forwarded-Host"]; ok {
-			if (len(xForwardedHost) == 1) {
+			if len(xForwardedHost) == 1 {
 				req.Host = xForwardedHost[0]
 			} else {
-				tooManyXForwardedHostHeaders = true;
+				tooManyXForwardedHostHeaders = true
 			}
 			delete(req.Header, "X-Forwarded-Host")
 		}
 
-		if (tooManyXForwardedHostHeaders) {
+		if tooManyXForwardedHostHeaders {
 			status = http.StatusBadRequest
 			http.Error(w, "X-Forwarded-Host must not be repeated", status)
 		} else if (domain == "localhost") || (domain == *masterDomain) {
