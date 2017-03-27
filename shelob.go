@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"time"
 	"strings"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -29,6 +31,10 @@ var (
 	shelobItself        = http.NewServeMux()
 	forwarder, _        = forward.New(forward.PassHostHeader(true))
 	shutdownInProgress  = false
+	request_counter     = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "shelob_requests_total",
+		Help: "Total number of requests served"},
+	)
 )
 
 func init() {
@@ -38,6 +44,8 @@ func init() {
 		},
 	})
 	log.SetLevel(log.DebugLevel)
+
+	prometheus.Register(request_counter)
 }
 
 func createRoundRobinBackends(backends map[string][]util.Backend) map[string]*roundrobin.RoundRobin {
@@ -123,6 +131,7 @@ func main() {
 	shelobItself.Handle("/", http.HandlerFunc(handlers.CreateListApplicationsHandler(&config)))
 	shelobItself.Handle("/api/applications", http.HandlerFunc(handlers.CreateListApplicationsHandlerJson(&config)))
 	shelobItself.Handle("/status", http.HandlerFunc(handlers.CreateStatusHandler(&config, &shutdownInProgress)))
+	shelobItself.Handle("/metrics", promhttp.Handler())
 
 	go func() {
 		for {
@@ -200,7 +209,7 @@ func main() {
 
 	s := &http.Server{
 		Addr:    ":" + strconv.Itoa(*httpPort),
-		Handler: redirect,
+		Handler: handlers.MetricsCountRequest(redirect, []prometheus.Counter{request_counter}),
 	}
 	log.WithFields(log.Fields{
 		"app":   "shelob",
