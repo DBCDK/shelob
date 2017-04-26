@@ -20,6 +20,7 @@ import (
 var (
 	app                 = kingpin.New("shelob", "Automatically updated HTTP reverse proxy for Marathon").Version("1.0")
 	httpPort            = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
+	metricsPort         = kingpin.Flag("metrics-port", "Http port to serve Prometheus metrics on").Default("8081").Int()
 	instanceName        = kingpin.Flag("name", "Instance name. Used in headers and on status pages.").String()
 	masterDomain        = kingpin.Flag("domain", "This will enable all apps to by default be exposed as a subdomain to this domain.").String()
 	marathons           = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
@@ -31,10 +32,10 @@ var (
 	shelobItself        = http.NewServeMux()
 	forwarder, _        = forward.New(forward.PassHostHeader(true))
 	shutdownInProgress  = false
-	request_counter     = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "shelob_requests_total",
-		Help: "Total number of requests served"},
-	)
+	request_counter     = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "http_server_requests_total",
+		Help: "Total number of http requests",
+	}, []string{"domain", "code", "method", "type", "path"})
 )
 
 func init() {
@@ -150,6 +151,7 @@ func main() {
 		t__start := time.Now().UnixNano()
 		domain := util.StripPortFromDomain(req.Host)
 		status := http.StatusOK
+		request_type := "internal"
 
 		tooManyXForwardedHostHeaders := false
 
@@ -176,6 +178,7 @@ func main() {
 		} else if (domain == "localhost") || (domain == *masterDomain) {
 			shelobItself.ServeHTTP(w, req)
 		} else if backend := config.RrbBackends[domain]; backend != nil {
+			request_type = "proxy"
 			backend.ServeHTTP(w, req)
 		} else {
 			status = http.StatusNotFound
@@ -183,9 +186,19 @@ func main() {
 		}
 
 		duration := float64(time.Now().UnixNano()-t__start) / 1000000
+
+		promLabels := prometheus.Labels{
+			"domain": domain,
+			"code": strconv.Itoa(status),
+			"method": req.Method,
+			"type": request_type,
+			"path": req.URL.Path,
+		}
+		request_counter.With(promLabels).Inc()
+
 		log.WithFields(log.Fields{
 			"app":   "shelob",
-			"event": "requets",
+			"event": "request",
 			"request": log.Fields{
 				"duration": duration,
 				"user": log.Fields{
@@ -207,9 +220,18 @@ func main() {
 		"port":  *httpPort,
 	}).Info("shelob started")
 
+	go func() {
+		metricsServer:= &http.Server{
+			Addr: ":" + strconv.Itoa(*metricsPort),
+			Handler: promhttp.Handler(),
+		}
+
+		metricsServer.ListenAndServe()
+	}()
+
 	s := &http.Server{
 		Addr:    ":" + strconv.Itoa(*httpPort),
-		Handler: handlers.MetricsCountRequest(redirect, []prometheus.Counter{request_counter}),
+		Handler: redirect,
 	}
 	log.WithFields(log.Fields{
 		"app":   "shelob",
