@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"strings"
 )
 
 var (
@@ -143,9 +144,17 @@ func main() {
 
 		tooManyXForwardedHostHeaders := false
 
-		if xForwardedHost, ok := req.Header["X-Forwarded-Host"]; ok {
-			if len(xForwardedHost) == 1 {
-				req.Host = xForwardedHost[0]
+		if xForwardedHostHeader, ok := req.Header["X-Forwarded-Host"]; ok {
+			// The XFH-header must not be repeated
+			if len(xForwardedHostHeader) == 1 {
+				xForwardedHost := xForwardedHostHeader[0]
+				// .. but it can contain a list of hosts. Pick the first one in the list, if that's the case
+				if strings.Contains(xForwardedHost, ",") {
+					parts := strings.Split(xForwardedHost, ",")
+					xForwardedHost = strings.TrimSpace(parts[0])
+				}
+
+				req.Host = xForwardedHost
 			} else {
 				tooManyXForwardedHostHeaders = true
 			}
