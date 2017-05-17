@@ -6,3 +6,6 @@ import:
   - roundrobin
 - package: gopkg.in/alecthomas/kingpin.v2
 - package: github.com/Sirupsen/logrus
+- package: github.com/prometheus/client_golang/prometheus
+  subpackages:
+  - promhttp
