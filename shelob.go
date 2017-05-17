@@ -35,7 +35,7 @@ var (
 	request_counter     = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_server_requests_total",
 		Help: "Total number of http requests",
-	}, []string{"domain", "code", "method", "type", "path"})
+	}, []string{"domain", "code", "method", "type"})
 )
 
 func init() {
@@ -192,7 +192,6 @@ func main() {
 			"code": strconv.Itoa(status),
 			"method": req.Method,
 			"type": request_type,
-			"path": req.URL.Path,
 		}
 		request_counter.With(promLabels).Inc()
 
