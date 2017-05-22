@@ -10,6 +10,7 @@ import (
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"net/http"
+	"net/http/pprof"
 	"strconv"
 	"time"
 	"strings"
@@ -30,6 +31,7 @@ var (
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	shelobItself        = http.NewServeMux()
+	adminMux 	    = http.NewServeMux()
 	forwarder, _        = forward.New(forward.PassHostHeader(true))
 	shutdownInProgress  = false
 	request_counter     = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -134,6 +136,12 @@ func main() {
 	shelobItself.Handle("/status", http.HandlerFunc(handlers.CreateStatusHandler(&config, &shutdownInProgress)))
 	shelobItself.Handle("/metrics", promhttp.Handler())
 
+	adminMux.Handle("/metrics", promhttp.Handler())
+	adminMux.HandleFunc("/debug/pprof/", pprof.Index)
+	adminMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	adminMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	adminMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+
 	go func() {
 		for {
 			select {
@@ -222,7 +230,7 @@ func main() {
 	go func() {
 		metricsServer:= &http.Server{
 			Addr: ":" + strconv.Itoa(*metricsPort),
-			Handler: promhttp.Handler(),
+			Handler: adminMux,
 		}
 
 		metricsServer.ListenAndServe()
