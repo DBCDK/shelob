@@ -38,6 +38,10 @@ var (
 		Name: "http_server_requests_total",
 		Help: "Total number of http requests",
 	}, []string{"domain", "code", "method", "type"})
+	reload_counter	    = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "shelob_reloads_total",
+		Help: "Number of times the service definitions have been reloaded",
+	})
 )
 
 func init() {
@@ -48,7 +52,8 @@ func init() {
 	})
 	log.SetLevel(log.DebugLevel)
 
-	prometheus.Register(request_counter)
+	prometheus.MustRegister(request_counter)
+	prometheus.MustRegister(reload_counter)
 }
 
 func createRoundRobinBackends(backends map[string][]util.Backend) map[string]*roundrobin.RoundRobin {
@@ -148,6 +153,7 @@ func main() {
 			case bs := <-backendChan:
 				config.Backends = bs
 				config.RrbBackends = createRoundRobinBackends(bs)
+				reload_counter.Inc()
 			}
 		}
 	}()
