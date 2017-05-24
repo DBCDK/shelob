@@ -58,6 +58,8 @@ imports:
   - unix
 - name: gopkg.in/alecthomas/kingpin.v2
   version: e9044be3ab2a8e11d4e1f418d12f0790d57e8d70
+- name: github.com/viki-org/dnscache
+  version: c70c1f23c5d84ab39054ec6b418a5ed0fa51cade
 - name: gopkg.in/mgo.v2
   version: 3f83fa5005286a7fe593b055f0d7771a7dce4655
   subpackages:

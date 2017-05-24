@@ -6,9 +6,11 @@ import (
 	"github.com/dbcdk/shelob/marathon"
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
+	"github.com/viki-org/dnscache"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"strconv"
@@ -31,8 +33,7 @@ var (
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	shelobItself        = http.NewServeMux()
-	adminMux 	    = http.NewServeMux()
-	forwarder, _        = forward.New(forward.PassHostHeader(true))
+	adminMux            = http.NewServeMux()
 	shutdownInProgress  = false
 	request_counter     = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_server_requests_total",
@@ -50,13 +51,43 @@ func init() {
 			log.FieldKeyTime: "timestamp",
 		},
 	})
-	log.SetLevel(log.DebugLevel)
 
 	prometheus.MustRegister(request_counter)
 	prometheus.MustRegister(reload_counter)
 }
 
-func createRoundRobinBackends(backends map[string][]util.Backend) map[string]*roundrobin.RoundRobin {
+func createForwarder() *forward.Forwarder {
+	resolver := dnscache.New(time.Minute * 1)
+
+	dialFn := func(network string, address string) (net.Conn, error) {
+		separator := strings.LastIndex(address, ":")
+		ip, _ := resolver.FetchOneString(address[:separator])
+		dialer := &net.Dialer{
+			Timeout: 1 * time.Second,
+		}
+		return dialer.Dial(network, ip+address[separator:])
+	}
+
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		MaxIdleConnsPerHost:   10,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   2 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		Dial: dialFn,
+	}
+
+	forwarder, err := forward.New(forward.PassHostHeader(true), forward.RoundTripper(transport))
+
+	if err != nil {
+		panic(err)
+	}
+
+	return forwarder
+}
+
+func createRoundRobinBackends(forwarder *forward.Forwarder, backends map[string][]util.Backend) map[string]*roundrobin.RoundRobin {
 	rrbBackends := make(map[string]*roundrobin.RoundRobin)
 
 	for domain, backendList := range backends {
@@ -133,6 +164,8 @@ func main() {
 
 	signals.RegisterSignals(&config, shutdownChan)
 
+	forwarder := createForwarder()
+
 	backendChan := make(chan map[string][]util.Backend)
 	updateChan := make(chan time.Time)
 
@@ -152,7 +185,7 @@ func main() {
 			select {
 			case bs := <-backendChan:
 				config.Backends = bs
-				config.RrbBackends = createRoundRobinBackends(bs)
+				config.RrbBackends = createRoundRobinBackends(forwarder, bs)
 				reload_counter.Inc()
 			}
 		}

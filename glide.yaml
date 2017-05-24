@@ -9,3 +9,4 @@ import:
 - package: github.com/prometheus/client_golang/prometheus
   subpackages:
   - promhttp
+- package: github.com/viki-org/dnscache
