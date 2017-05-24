@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"net/http"
 	"github.com/prometheus/client_golang/prometheus"
+	"net/http"
 )
 
 func MetricsCountRequest(next http.Handler, counters []prometheus.Counter) http.Handler {

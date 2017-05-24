@@ -1,5 +1,5 @@
-hash: fc1eb5ab9580c135013e03ee7247e637d3edd32730d8f41f27b0236bf4346dc6
-updated: 2017-03-27T18:50:17.632792829+02:00
+hash: 23898eab5dede9475cbbe674e6b6b71ae4281bbd16da3aa8eb312675a59ef85c
+updated: 2017-05-24T23:11:14.402809895+02:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -17,6 +17,8 @@ imports:
   version: c9c7427a2a70d2eb3bafa0ab2dc163e45f143317
   subpackages:
   - proto
+- name: github.com/kavu/go_reuseport
+  version: db1bbbc1f61ffd0bd46bad78c739c9f85ba6ae18
 - name: github.com/mailgun/timetools
   version: fd192d755b00c968d312d23f521eb0cdc6f66bd0
 - name: github.com/matttproud/golang_protobuf_extensions
@@ -45,6 +47,8 @@ imports:
   - xfs
 - name: github.com/Sirupsen/logrus
   version: e400ff7861bce9661cf37c162ce3b7b303baf333
+- name: github.com/viki-org/dnscache
+  version: c70c1f23c5d84ab39054ec6b418a5ed0fa51cade
 - name: github.com/vulcand/oxy
   version: 9d07313adea3bb9c7817ea887df6ac79648675f9
   subpackages:
@@ -52,14 +56,23 @@ imports:
   - roundrobin
   - utils
   - memmetrics
+- name: go.uber.org/atomic
+  version: 4e336646b2ef9fc6e47be8e21594178f98e5ebcf
+- name: go.uber.org/zap
+  version: fab453050a7a08c35f31fc5fff6f2dbd962285ab
+  subpackages:
+  - zapcore
+  - internal/bufferpool
+  - internal/multierror
+  - buffer
+  - internal/color
+  - internal/exit
 - name: golang.org/x/sys
   version: 30237cf4eefd639b184d1f2cb77a581ea0be8947
   subpackages:
   - unix
 - name: gopkg.in/alecthomas/kingpin.v2
   version: e9044be3ab2a8e11d4e1f418d12f0790d57e8d70
-- name: github.com/viki-org/dnscache
-  version: c70c1f23c5d84ab39054ec6b418a5ed0fa51cade
 - name: gopkg.in/mgo.v2
   version: 3f83fa5005286a7fe593b055f0d7771a7dce4655
   subpackages:

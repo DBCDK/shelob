@@ -2,12 +2,17 @@ package signals
 
 import (
 	"fmt"
-	log "github.com/Sirupsen/logrus"
+	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/util"
+	"go.uber.org/zap"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+)
+
+var (
+	log = logging.GetInstance()
 )
 
 func RegisterSignals(config *util.Config, shutdownChan chan bool) {
@@ -22,10 +27,9 @@ func RegisterSignals(config *util.Config, shutdownChan chan bool) {
 
 			delay := time.Second * time.Duration(config.ShutdownDelay)
 
-			log.WithFields(log.Fields{
-				"app":   "shelob",
-				"event": signal.String(),
-			}).Info(fmt.Sprintf("recieved signal '%v', will shutdown after %vs. Send '%v' again to shutdown now", signal, delay, signal))
+			log.Info(fmt.Sprintf("recieved signal '%v', will shutdown after %vs. Send '%v' again to shutdown now", signal, delay, signal),
+				zap.String("event", "signal.String()"),
+			)
 
 			select {
 			case <-signals:

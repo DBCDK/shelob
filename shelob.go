@@ -1,23 +1,25 @@
 package main
 
 import (
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/dbcdk/shelob/handlers"
+	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/marathon"
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/viki-org/dnscache"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
+	"go.uber.org/zap"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"strconv"
-	"time"
 	"strings"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/client_golang/prometheus"
+	"time"
 )
 
 var (
@@ -32,6 +34,7 @@ var (
 	updateInterval      = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
+	accessLogEnabled    = kingpin.Flag("access-log", "Enable accesslog to stdout").Default("true").Bool()
 	shelobItself        = http.NewServeMux()
 	adminMux            = http.NewServeMux()
 	shutdownInProgress  = false
@@ -39,16 +42,19 @@ var (
 		Name: "http_server_requests_total",
 		Help: "Total number of http requests",
 	}, []string{"domain", "code", "method", "type"})
-	reload_counter	    = prometheus.NewCounter(prometheus.CounterOpts{
+	reload_counter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "shelob_reloads_total",
 		Help: "Number of times the service definitions have been reloaded",
 	})
+	log = logging.GetInstance()
 )
 
 func init() {
-	log.SetFormatter(&log.JSONFormatter{
-		FieldMap: log.FieldMap{
-			log.FieldKeyTime: "timestamp",
+	kingpin.Parse()
+	logrus.SetLevel(logrus.ErrorLevel)
+	logrus.SetFormatter(&logrus.JSONFormatter{
+		FieldMap: logrus.FieldMap{
+			logrus.FieldKeyTime: "timestamp",
 		},
 	})
 
@@ -115,16 +121,14 @@ func backendManager(config *util.Config, backendChan chan map[string][]util.Back
 		select {
 		case eventTime := <-updateChan:
 			delay := time.Now().Sub(eventTime)
-			log.WithFields(log.Fields{
-				"app":   "shelob",
-				"event": "reload",
-				"delay": delay.String(),
-			}).Info("Update requested")
+			log.Info("Update requested",
+				zap.String("event", "reload"),
+				zap.String("delay", delay.String()),
+			)
 		case <-time.After(time.Second * time.Duration(*updateInterval)):
-			log.WithFields(log.Fields{
-				"app":   "shelob",
-				"event": "reload",
-			}).Info("No changes for a while, forcing reload")
+			log.Info("No changes for a while, forcing reload",
+				zap.String("event", "reload"),
+			)
 		}
 	}
 }
@@ -134,7 +138,7 @@ func routeToSelf(req *http.Request) bool {
 }
 
 func main() {
-	kingpin.Parse()
+	defer log.Sync()
 
 	config := util.Config{
 		HttpPort:        *httpPort,
@@ -236,39 +240,40 @@ func main() {
 
 		promLabels := prometheus.Labels{
 			"domain": domain,
-			"code": strconv.Itoa(status),
+			"code":   strconv.Itoa(status),
 			"method": req.Method,
-			"type": request_type,
+			"type":   request_type,
 		}
 		request_counter.With(promLabels).Inc()
 
-		log.WithFields(log.Fields{
-			"app":   "shelob",
-			"event": "request",
-			"request": log.Fields{
-				"duration": duration,
-				"user": log.Fields{
-					"addr":  req.RemoteAddr,
-					"agent": req.UserAgent(),
-				},
-				"domain":   domain,
-				"method":   req.Method,
-				"protocol": req.Proto,
-				"status":   status,
-				"url":      req.URL.String(),
-			},
-		}).Info("")
+		if *accessLogEnabled {
+			log.Info("request",
+				zap.String("event", "request"),
+				zap.Any("marathon", map[string]interface{}{
+					"duration": duration,
+					"user": map[string]interface{}{
+						"addr":  req.RemoteAddr,
+						"agent": req.UserAgent(),
+					},
+					"domain":   domain,
+					"method":   req.Method,
+					"protocol": req.Proto,
+					"status":   status,
+					"url":      req.URL.String(),
+				}),
+			)
+
+		}
 	})
 
-	log.WithFields(log.Fields{
-		"app":   "shelob",
-		"event": "started",
-		"port":  *httpPort,
-	}).Info("shelob started")
+	log.Info("shelob started on port "+strconv.Itoa(*httpPort),
+		zap.String("event", "started"),
+		zap.Int("port", *httpPort),
+	)
 
 	go func() {
-		metricsServer:= &http.Server{
-			Addr: ":" + strconv.Itoa(*metricsPort),
+		metricsServer := &http.Server{
+			Addr:    ":" + strconv.Itoa(*metricsPort),
 			Handler: adminMux,
 		}
 
@@ -279,8 +284,9 @@ func main() {
 		Addr:    ":" + strconv.Itoa(*httpPort),
 		Handler: redirect,
 	}
-	log.WithFields(log.Fields{
-		"app":   "shelob",
-		"event": "shutdown",
-	}).Fatal(s.ListenAndServe())
+	log.Fatal(s.ListenAndServe().Error(),
+		zap.String("event", "shutdown"),
+		zap.Int("port", *httpPort),
+	)
+
 }

@@ -6,14 +6,19 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
+	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/util"
+	"go.uber.org/zap"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+)
+
+var (
+	log = logging.GetInstance()
 )
 
 func trackUpdates(config *util.Config, updateChan chan time.Time) {
@@ -45,10 +50,9 @@ func trackUpdates(config *util.Config, updateChan chan time.Time) {
 			}
 
 		case <-time.After(time.Second * time.Duration(config.UpdateInterval)):
-			log.WithFields(log.Fields{
-				"app":   "shelob",
-				"event": "reload",
-			}).Info("No changes for a while, forcing reload")
+			log.Info("No changes for a while, forcing reload",
+				zap.String("event", "reload"),
+			)
 		}
 
 	}()
@@ -100,14 +104,13 @@ func doTrackUpdates(config *util.Config, marathonEventChan chan RawEvent) error 
 			return err
 		}
 
-		log.WithFields(log.Fields{
-			"app":   "shelob",
-			"event": "marathonEvent",
-			"marathon": log.Fields{
+		log.Info("marathon event",
+			zap.String("event", "marathonEvent"),
+			zap.Any("marathon", map[string]interface{}{
 				"eventId": eventId,
 				"event":   string(line),
-			},
-		}).Info("marathon event")
+			}),
+		)
 
 		switch {
 		case bytes.HasPrefix(line, []byte("event:")):
@@ -121,13 +124,12 @@ func doTrackUpdates(config *util.Config, marathonEventChan chan RawEvent) error 
 			}
 			event = RawEvent{}
 		default:
-			log.WithFields(log.Fields{
-				"app":   "shelob",
-				"event": "marathonEvent",
-				"marathon": log.Fields{
+			log.Error("ignored marathon event",
+				zap.String("event", "marathonEvent"),
+				zap.Any("marathon", map[string]interface{}{
 					"ignored": eventId,
-				},
-			}).Info("ignored marathon event")
+				}),
+			)
 
 		}
 
@@ -186,15 +188,15 @@ func UpdateBackends(config *util.Config) (map[string][]util.Backend, error) {
 				}
 				for _, task := range indexedTasks[appId] {
 					if port+1 > len(task.Ports) {
-						log.WithFields(log.Fields{
-							"app":   "shelob",
-							"event": "invalidMarathonApp",
-							"marathon": log.Fields{
+						log.Info("illegal port-index",
+							zap.String("event", "invalidMarathonApp"),
+							zap.Any("marathon", map[string]interface{}{
 								"appId":         appId,
 								"lastPort":      len(task.Ports) - 1,
 								"requestedPort": port,
-							},
-						}).Info("illegal port-index")
+							}),
+						)
+
 						continue
 					}
 
