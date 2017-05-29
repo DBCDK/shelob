@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 	"github.com/kavu/go_reuseport"
+	"context"
 )
 
 var (
@@ -67,13 +68,14 @@ func init() {
 func createForwarder() *forward.Forwarder {
 	resolver := dnscache.New(time.Minute * 1)
 
-	dialFn := func(network string, address string) (net.Conn, error) {
+	dialContextFn := func(ctx context.Context, network string, address string) (net.Conn, error) {
 		separator := strings.LastIndex(address, ":")
 		ip, _ := resolver.FetchOneString(address[:separator])
 		dialer := &net.Dialer{
 			Timeout: 1 * time.Second,
 		}
-		return dialer.Dial(network, ip+address[separator:])
+
+		return dialer.DialContext(ctx, network, ip+address[separator:])
 	}
 
 	transport := &http.Transport{
@@ -83,7 +85,7 @@ func createForwarder() *forward.Forwarder {
 		IdleConnTimeout:       30 * time.Second,
 		TLSHandshakeTimeout:   2 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		Dial: dialFn,
+		DialContext: dialContextFn,
 	}
 
 	forwarder, err := forward.New(forward.PassHostHeader(true), forward.RoundTripper(transport))
