@@ -20,12 +20,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"github.com/kavu/go_reuseport"
 )
 
 var (
 	app                 = kingpin.New("shelob", "Automatically updated HTTP reverse proxy for Marathon").Version("1.0")
 	httpPort            = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
 	metricsPort         = kingpin.Flag("metrics-port", "Http port to serve Prometheus metrics on").Default("8081").Int()
+	reuseHttpPort       = kingpin.Flag("reuse-port", "Enable SO_REUSEPORT for the main http port").Default("false").Bool()
 	instanceName        = kingpin.Flag("name", "Instance name. Used in headers and on status pages.").String()
 	masterDomain        = kingpin.Flag("domain", "This will enable all apps to by default be exposed as a subdomain to this domain.").String()
 	marathons           = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
@@ -135,6 +137,14 @@ func backendManager(config *util.Config, backendChan chan map[string][]util.Back
 
 func routeToSelf(req *http.Request) bool {
 	return (req.Host == "localhost") || (req.Host == *masterDomain)
+}
+
+func createListener(proto string, laddr string, reuse bool) (net.Listener, error) {
+	if *reuseHttpPort {
+		return reuseport.Listen(proto, laddr)
+	} else {
+		return net.Listen(proto, laddr)
+	}
 }
 
 func main() {
@@ -280,11 +290,20 @@ func main() {
 		metricsServer.ListenAndServe()
 	}()
 
+	proto := "tcp"
+	httpAddr := ":" + strconv.Itoa(*httpPort)
+
+	listener, err := createListener(proto, httpAddr, *reuseHttpPort)
+	if err != nil {
+		panic(err)
+	}
+	defer listener.Close()
+
 	s := &http.Server{
-		Addr:    ":" + strconv.Itoa(*httpPort),
 		Handler: redirect,
 	}
-	log.Fatal(s.ListenAndServe().Error(),
+
+	log.Fatal(s.Serve(listener).Error(),
 		zap.String("event", "shutdown"),
 		zap.Int("port", *httpPort),
 	)
