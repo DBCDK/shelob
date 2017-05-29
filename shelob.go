@@ -82,7 +82,7 @@ func createForwarder() *forward.Forwarder {
 		Proxy:                 http.ProxyFromEnvironment,
 		MaxIdleConnsPerHost:   10,
 		MaxIdleConns:          100,
-		IdleConnTimeout:       30 * time.Second,
+		IdleConnTimeout:       5 * time.Second,
 		TLSHandshakeTimeout:   2 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		DialContext: dialContextFn,
