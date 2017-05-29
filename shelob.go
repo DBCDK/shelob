@@ -261,7 +261,7 @@ func main() {
 		if *accessLogEnabled {
 			log.Info("request",
 				zap.String("event", "request"),
-				zap.Any("marathon", map[string]interface{}{
+				zap.Any("request", map[string]interface{}{
 					"duration": duration,
 					"user": map[string]interface{}{
 						"addr":  req.RemoteAddr,
