@@ -3,16 +3,14 @@ package main
 import (
 	"github.com/Sirupsen/logrus"
 	"github.com/dbcdk/shelob/logging"
-	"github.com/dbcdk/shelob/marathon"
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/vulcand/oxy/roundrobin"
-	"go.uber.org/zap"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"time"
 	"github.com/dbcdk/shelob/proxy"
-	"github.com/vulcand/oxy/forward"
+	"github.com/dbcdk/shelob/backends"
 )
 
 var (
@@ -51,35 +49,6 @@ func init() {
 
 	prometheus.MustRegister(request_counter)
 	prometheus.MustRegister(reload_counter)
-}
-
-
-func backendManager(config *util.Config, forwarder *forward.Forwarder, updateChan chan time.Time) error {
-	for {
-		backends, err := marathon.UpdateBackends(config)
-
-		if err != nil {
-			println("Error:")
-			println(err.Error())
-		} else {
-			config.Backends = backends
-			config.RrbBackends = proxy.CreateRoundRobinBackends(forwarder, backends)
-			config.Counters.Reloads.Inc()
-		}
-
-		select {
-		case eventTime := <-updateChan:
-			delay := time.Now().Sub(eventTime)
-			log.Info("Update requested",
-				zap.String("event", "reload"),
-				zap.String("delay", delay.String()),
-			)
-		case <-time.After(time.Second * time.Duration(*updateInterval)):
-			log.Info("No changes for a while, forcing reload",
-				zap.String("event", "reload"),
-			)
-		}
-	}
 }
 
 func main() {
@@ -124,5 +93,5 @@ func main() {
 	go proxy.StartAdminServer(&config)
 
 	// start main loop
-	backendManager(&config, forwarder, updateChan)
+	backends.BackendManager(&config, forwarder, updateChan)
 }
