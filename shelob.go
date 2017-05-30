@@ -12,6 +12,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	"time"
 	"github.com/dbcdk/shelob/proxy"
+	"github.com/vulcand/oxy/forward"
 )
 
 var (
@@ -53,7 +54,7 @@ func init() {
 }
 
 
-func backendManager(config *util.Config, backendChan chan map[string][]util.Backend, updateChan chan time.Time) error {
+func backendManager(config *util.Config, forwarder *forward.Forwarder, updateChan chan time.Time) error {
 	for {
 		backends, err := marathon.UpdateBackends(config)
 
@@ -61,7 +62,9 @@ func backendManager(config *util.Config, backendChan chan map[string][]util.Back
 			println("Error:")
 			println(err.Error())
 		} else {
-			backendChan <- backends
+			config.Backends = backends
+			config.RrbBackends = proxy.CreateRoundRobinBackends(forwarder, backends)
+			config.Counters.Reloads.Inc()
 		}
 
 		select {
@@ -114,22 +117,14 @@ func main() {
 
 	forwarder := proxy.CreateForwarder()
 
-	backendChan := make(chan map[string][]util.Backend)
+	// messages to this channel will trigger instant updates
 	updateChan := make(chan time.Time)
 
-	go backendManager(&config, backendChan, updateChan)
 	// go trackUpdates(updateChan)
 
 	go proxy.StartProxyServer(&config)
 	go proxy.StartAdminServer(&config)
 
 	// start main loop
-	for {
-		select {
-		case bs := <-backendChan:
-			config.Backends = bs
-			config.RrbBackends = proxy.CreateRoundRobinBackends(forwarder, bs)
-			reload_counter.Inc()
-		}
-	}
+	backendManager(&config, forwarder, updateChan)
 }
