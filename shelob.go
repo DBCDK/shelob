@@ -69,14 +69,13 @@ func main() {
 
 	signals.RegisterSignals(&config)
 
-	forwarder := proxy.CreateForwarder()
+	go proxy.StartProxyServer(&config)
+	go proxy.StartAdminServer(&config)
 
 	// messages to this channel will trigger instant updates
 	updateChan := make(chan time.Time)
 
-	go proxy.StartProxyServer(&config)
-	go proxy.StartAdminServer(&config)
-
 	// start main loop
+	forwarder := proxy.CreateForwarder()
 	backends.BackendManager(&config, forwarder, updateChan)
 }
