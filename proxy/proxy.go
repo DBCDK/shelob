@@ -10,7 +10,16 @@ import (
 	"github.com/dbcdk/shelob/logging"
 	"go.uber.org/zap"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/vulcand/oxy/forward"
+	"github.com/viki-org/dnscache"
+	"net"
+	"context"
+	"github.com/vulcand/oxy/roundrobin"
 )
+
+func routeToSelf(req *http.Request, config *util.Config) bool {
+	return (req.Host == "localhost") || (req.Host == config.Domain)
+}
 
 func RedirectHandler(config *util.Config) http.Handler {
 	webMux := httputil.CreateWebMux(config)
@@ -43,7 +52,7 @@ func RedirectHandler(config *util.Config) http.Handler {
 		if tooManyXForwardedHostHeaders {
 			status = http.StatusBadRequest
 			http.Error(w, "X-Forwarded-Host must not be repeated", status)
-		} else if (domain == "localhost") || (domain == config.Domain) {
+		} else if routeToSelf(req, config) {
 			webMux.ServeHTTP(w, req)
 		} else if backend := config.RrbBackends[domain]; backend != nil {
 			request_type = "proxy"
@@ -83,4 +92,50 @@ func RedirectHandler(config *util.Config) http.Handler {
 		}
 	})
 
+}
+
+func CreateForwarder() *forward.Forwarder {
+	resolver := dnscache.New(time.Minute * 1)
+
+	dialContextFn := func(ctx context.Context, network string, address string) (net.Conn, error) {
+		separator := strings.LastIndex(address, ":")
+		ip, _ := resolver.FetchOneString(address[:separator])
+		dialer := &net.Dialer{
+			Timeout: 1 * time.Second,
+		}
+
+		return dialer.DialContext(ctx, network, ip+address[separator:])
+	}
+
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		MaxIdleConnsPerHost:   10,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       5 * time.Second,
+		TLSHandshakeTimeout:   2 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		DialContext:           dialContextFn,
+	}
+
+	forwarder, err := forward.New(forward.PassHostHeader(true), forward.RoundTripper(transport))
+
+	if err != nil {
+		panic(err)
+	}
+
+	return forwarder
+}
+
+func CreateRoundRobinBackends(forwarder *forward.Forwarder, backends map[string][]util.Backend) map[string]*roundrobin.RoundRobin {
+	rrbBackends := make(map[string]*roundrobin.RoundRobin)
+
+	for domain, backendList := range backends {
+		rrbBackends[domain], _ = roundrobin.New(forwarder)
+
+		for _, backend := range backendList {
+			rrbBackends[domain].UpsertServer(backend.Url)
+		}
+	}
+
+	return rrbBackends
 }

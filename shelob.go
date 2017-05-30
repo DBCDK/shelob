@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"github.com/Sirupsen/logrus"
 	httputil "github.com/dbcdk/shelob/http"
 	"github.com/dbcdk/shelob/logging"
@@ -9,15 +8,11 @@ import (
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/viki-org/dnscache"
-	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
 	"go.uber.org/zap"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 	"github.com/dbcdk/shelob/proxy"
 )
@@ -60,51 +55,6 @@ func init() {
 	prometheus.MustRegister(reload_counter)
 }
 
-func createForwarder() *forward.Forwarder {
-	resolver := dnscache.New(time.Minute * 1)
-
-	dialContextFn := func(ctx context.Context, network string, address string) (net.Conn, error) {
-		separator := strings.LastIndex(address, ":")
-		ip, _ := resolver.FetchOneString(address[:separator])
-		dialer := &net.Dialer{
-			Timeout: 1 * time.Second,
-		}
-
-		return dialer.DialContext(ctx, network, ip+address[separator:])
-	}
-
-	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		MaxIdleConnsPerHost:   10,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       5 * time.Second,
-		TLSHandshakeTimeout:   2 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		DialContext:           dialContextFn,
-	}
-
-	forwarder, err := forward.New(forward.PassHostHeader(true), forward.RoundTripper(transport))
-
-	if err != nil {
-		panic(err)
-	}
-
-	return forwarder
-}
-
-func createRoundRobinBackends(forwarder *forward.Forwarder, backends map[string][]util.Backend) map[string]*roundrobin.RoundRobin {
-	rrbBackends := make(map[string]*roundrobin.RoundRobin)
-
-	for domain, backendList := range backends {
-		rrbBackends[domain], _ = roundrobin.New(forwarder)
-
-		for _, backend := range backendList {
-			rrbBackends[domain].UpsertServer(backend.Url)
-		}
-	}
-
-	return rrbBackends
-}
 
 func backendManager(config *util.Config, backendChan chan map[string][]util.Backend, updateChan chan time.Time) error {
 	for {
@@ -131,11 +81,6 @@ func backendManager(config *util.Config, backendChan chan map[string][]util.Back
 		}
 	}
 }
-
-func routeToSelf(req *http.Request) bool {
-	return (req.Host == "localhost") || (req.Host == *masterDomain)
-}
-
 
 func main() {
 	defer log.Sync()
@@ -166,19 +111,9 @@ func main() {
 		RrbBackends:    make(map[string]*roundrobin.RoundRobin),
 	}
 
-	shutdownChan := make(chan bool, 1)
-	go func() {
-		for {
-			select {
-			case shutdownState := <-shutdownChan:
-				config.State.ShutdownInProgress = shutdownState
-			}
-		}
-	}()
+	signals.RegisterSignals(&config)
 
-	signals.RegisterSignals(&config, shutdownChan)
-
-	forwarder := createForwarder()
+	forwarder := proxy.CreateForwarder()
 
 	backendChan := make(chan map[string][]util.Backend)
 	updateChan := make(chan time.Time)
@@ -244,7 +179,7 @@ func main() {
 		select {
 		case bs := <-backendChan:
 			config.Backends = bs
-			config.RrbBackends = createRoundRobinBackends(forwarder, bs)
+			config.RrbBackends = proxy.CreateRoundRobinBackends(forwarder, bs)
 			reload_counter.Inc()
 		}
 	}
