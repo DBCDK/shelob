@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"github.com/Sirupsen/logrus"
 	"github.com/dbcdk/shelob/handlers"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/marathon"
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
+	"github.com/kavu/go_reuseport"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/viki-org/dnscache"
@@ -20,8 +22,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"github.com/kavu/go_reuseport"
-	"context"
 )
 
 var (
@@ -85,7 +85,7 @@ func createForwarder() *forward.Forwarder {
 		IdleConnTimeout:       5 * time.Second,
 		TLSHandshakeTimeout:   2 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		DialContext: dialContextFn,
+		DialContext:           dialContextFn,
 	}
 
 	forwarder, err := forward.New(forward.PassHostHeader(true), forward.RoundTripper(transport))
