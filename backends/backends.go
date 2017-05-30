@@ -59,6 +59,7 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 		config.RrbBackends = proxy.CreateRoundRobinBackends(forwarder, backends)
 		config.Counters.Reloads.Inc()
 		config.LastUpdate = time.Now()
+		config.Counters.LastUpdate.Set(float64(config.LastUpdate.Unix()))
 
 		select {
 		case eventTime := <-updateChan:

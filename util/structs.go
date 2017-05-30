@@ -35,8 +35,9 @@ type State struct {
 }
 
 type Counters struct {
-	Requests prometheus.CounterVec
-	Reloads  prometheus.Counter
+	Requests   prometheus.CounterVec
+	Reloads    prometheus.Counter
+	LastUpdate prometheus.Gauge
 }
 
 type MarathonConfig struct {
