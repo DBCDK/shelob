@@ -3,14 +3,12 @@ package main
 import (
 	"context"
 	"github.com/Sirupsen/logrus"
-	"github.com/dbcdk/shelob/handlers"
+	httputil "github.com/dbcdk/shelob/http"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/marathon"
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
-	"github.com/kavu/go_reuseport"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/viki-org/dnscache"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
@@ -18,7 +16,6 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	"net"
 	"net/http"
-	"net/http/pprof"
 	"strconv"
 	"strings"
 	"time"
@@ -38,8 +35,6 @@ var (
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	accessLogEnabled    = kingpin.Flag("access-log", "Enable accesslog to stdout").Default("true").Bool()
-	shelobItself        = http.NewServeMux()
-	adminMux            = http.NewServeMux()
 	shutdownInProgress  = false
 	request_counter     = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_server_requests_total",
@@ -141,13 +136,6 @@ func routeToSelf(req *http.Request) bool {
 	return (req.Host == "localhost") || (req.Host == *masterDomain)
 }
 
-func createListener(proto string, laddr string, reuse bool) (net.Listener, error) {
-	if *reuseHttpPort {
-		return reuseport.Listen(proto, laddr)
-	} else {
-		return net.Listen(proto, laddr)
-	}
-}
 
 func main() {
 	defer log.Sync()
@@ -185,16 +173,8 @@ func main() {
 	backendChan := make(chan map[string][]util.Backend)
 	updateChan := make(chan time.Time)
 
-	shelobItself.Handle("/", http.HandlerFunc(handlers.CreateListApplicationsHandler(&config)))
-	shelobItself.Handle("/api/applications", http.HandlerFunc(handlers.CreateListApplicationsHandlerJson(&config)))
-	shelobItself.Handle("/status", http.HandlerFunc(handlers.CreateStatusHandler(&config, &shutdownInProgress)))
-	shelobItself.Handle("/metrics", promhttp.Handler())
-
-	adminMux.Handle("/metrics", promhttp.Handler())
-	adminMux.HandleFunc("/debug/pprof/", pprof.Index)
-	adminMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	adminMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	adminMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	webMux := httputil.CreateWebMux(&config, &shutdownInProgress)
+	adminMux := httputil.CreateAdminMux(&config, &shutdownInProgress)
 
 	go backendManager(&config, backendChan, updateChan)
 	// go trackUpdates(updateChan)
@@ -228,7 +208,7 @@ func main() {
 			status = http.StatusBadRequest
 			http.Error(w, "X-Forwarded-Host must not be repeated", status)
 		} else if (domain == "localhost") || (domain == *masterDomain) {
-			shelobItself.ServeHTTP(w, req)
+			webMux.ServeHTTP(w, req)
 		} else if backend := config.RrbBackends[domain]; backend != nil {
 			request_type = "proxy"
 			backend.ServeHTTP(w, req)
@@ -271,7 +251,7 @@ func main() {
 	go func() {
 		httpAddr := ":" + strconv.Itoa(*httpPort)
 
-		listener, err := createListener("tcp", httpAddr, *reuseHttpPort)
+		listener, err := httputil.CreateListener("tcp", httpAddr, *reuseHttpPort)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
@@ -296,7 +276,7 @@ func main() {
 	go func() {
 		httpAddr := ":" + strconv.Itoa(*metricsPort)
 
-		listener, err := createListener("tcp", httpAddr, false)
+		listener, err := httputil.CreateListener("tcp", httpAddr, false)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
