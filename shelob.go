@@ -9,6 +9,8 @@ import (
 	"github.com/dbcdk/shelob/util"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -42,12 +44,22 @@ func init() {
 func main() {
 	defer log.Sync()
 
+	name := *instanceName
+	if name == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Warn("Could not resolve own hostname: " + err.Error())
+		} else {
+			name = hostname + ":" + strconv.Itoa(*httpPort)
+		}
+	}
+
 	config := util.Config{
 		HttpPort:        *httpPort,
 		MetricsPort:     *metricsPort,
 		ReuseHttpPort:   *reuseHttpPort,
 		IgnoreSSLErrors: *insecureSSL,
-		InstanceName:    *instanceName,
+		InstanceName:    name,
 		Logging: util.Logging{
 			AccessLog: *accessLogEnabled,
 		},
