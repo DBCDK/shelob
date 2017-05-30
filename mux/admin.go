@@ -1,4 +1,4 @@
-package http
+package mux
 
 import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"

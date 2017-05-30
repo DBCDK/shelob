@@ -4,7 +4,7 @@ import (
 	"strings"
 	"strconv"
 	"net/http"
-	httputil "github.com/dbcdk/shelob/http"
+	"github.com/dbcdk/shelob/mux"
 	"time"
 	"github.com/dbcdk/shelob/util"
 	"github.com/dbcdk/shelob/logging"
@@ -22,7 +22,7 @@ func routeToSelf(req *http.Request, config *util.Config) bool {
 }
 
 func RedirectHandler(config *util.Config) http.Handler {
-	webMux := httputil.CreateWebMux(config)
+	webMux := mux.CreateWebMux(config)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		t__start := time.Now().UnixNano()

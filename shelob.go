@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/Sirupsen/logrus"
-	httputil "github.com/dbcdk/shelob/http"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/marathon"
 	"github.com/dbcdk/shelob/signals"
@@ -11,8 +10,6 @@ import (
 	"github.com/vulcand/oxy/roundrobin"
 	"go.uber.org/zap"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"net/http"
-	"strconv"
 	"time"
 	"github.com/dbcdk/shelob/proxy"
 )
@@ -87,6 +84,8 @@ func main() {
 
 	config := util.Config{
 		HttpPort:        *httpPort,
+		MetricsPort:     *metricsPort,
+		ReuseHttpPort:   *reuseHttpPort,
 		IgnoreSSLErrors: *insecureSSL,
 		InstanceName:    *instanceName,
 		Logging: util.Logging{
@@ -118,61 +117,11 @@ func main() {
 	backendChan := make(chan map[string][]util.Backend)
 	updateChan := make(chan time.Time)
 
-
-	adminMux := httputil.CreateAdminMux(&config)
-
 	go backendManager(&config, backendChan, updateChan)
 	// go trackUpdates(updateChan)
 
-	// start proxy server
-	go func() {
-		httpAddr := ":" + strconv.Itoa(*httpPort)
-
-		listener, err := httputil.CreateListener("tcp", httpAddr, *reuseHttpPort)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		defer listener.Close()
-
-		proxyServer := &http.Server{
-			Handler: proxy.RedirectHandler(&config),
-		}
-
-		log.Info("Shelob started on port "+strconv.Itoa(*httpPort),
-			zap.String("event", "started"),
-			zap.Int("port", *httpPort),
-		)
-
-		log.Fatal(proxyServer.Serve(listener).Error(),
-			zap.String("event", "shutdown"),
-			zap.Int("port", *httpPort),
-		)
-	}()
-
-	// start admin/metrics server
-	go func() {
-		httpAddr := ":" + strconv.Itoa(*metricsPort)
-
-		listener, err := httputil.CreateListener("tcp", httpAddr, false)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		defer listener.Close()
-
-		adminServer := &http.Server{
-			Handler: adminMux,
-		}
-
-		log.Info("Shelob metrics started on port "+strconv.Itoa(*metricsPort),
-			zap.String("event", "started"),
-			zap.Int("port", *metricsPort),
-		)
-
-		log.Fatal(adminServer.Serve(listener).Error(),
-			zap.String("event", "shutdown"),
-			zap.Int("port", *httpPort),
-		)
-	}()
+	go proxy.StartProxyServer(&config)
+	go proxy.StartAdminServer(&config)
 
 	// start main loop
 	for {

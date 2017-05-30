@@ -9,6 +9,8 @@ import (
 
 type Config struct {
 	HttpPort        int
+	MetricsPort     int
+	ReuseHttpPort   bool
 	IgnoreSSLErrors bool
 	InstanceName    string
 	Marathon        MarathonConfig
