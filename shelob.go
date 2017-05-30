@@ -7,7 +7,6 @@ import (
 	"github.com/dbcdk/shelob/proxy"
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"time"
@@ -27,15 +26,7 @@ var (
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	accessLogEnabled    = kingpin.Flag("access-log", "Enable accesslog to stdout").Default("true").Bool()
-	request_counter     = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "http_server_requests_total",
-		Help: "Total number of http requests",
-	}, []string{"domain", "code", "method", "type"})
-	reload_counter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "shelob_reloads_total",
-		Help: "Number of times the service definitions have been reloaded",
-	})
-	log = logging.GetInstance()
+	log                 = logging.GetInstance()
 )
 
 func init() {
@@ -46,9 +37,6 @@ func init() {
 			logrus.FieldKeyTime: "timestamp",
 		},
 	})
-
-	prometheus.MustRegister(request_counter)
-	prometheus.MustRegister(reload_counter)
 }
 
 func main() {
@@ -66,10 +54,7 @@ func main() {
 		State: util.State{
 			ShutdownInProgress: false,
 		},
-		Counters: util.Counters{
-			Requests: *request_counter,
-			Reloads:  reload_counter,
-		},
+		Counters: util.CreateAndRegisterCounters(),
 		Marathon: util.MarathonConfig{
 			Urls:        *marathons,
 			Auth:        *marathonAuth,
