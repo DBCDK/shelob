@@ -1,10 +1,10 @@
 package mux
 
 import (
-	"net/http"
 	"github.com/dbcdk/shelob/handlers"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/dbcdk/shelob/util"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"net/http"
 )
 
 func CreateWebMux(config *util.Config) *http.ServeMux {

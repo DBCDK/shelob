@@ -2,9 +2,9 @@ package util
 
 import (
 	"encoding/json"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/vulcand/oxy/roundrobin"
 	"net/url"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Config struct {
@@ -21,7 +21,7 @@ type Config struct {
 	RrbBackends     map[string]*roundrobin.RoundRobin
 	Logging         Logging
 	State           State
-	Counters	Counters
+	Counters        Counters
 }
 
 type Logging struct {

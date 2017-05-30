@@ -1,14 +1,14 @@
 package backends
 
 import (
-	"github.com/vulcand/oxy/forward"
-	"github.com/dbcdk/shelob/util"
-	"time"
-	"github.com/dbcdk/shelob/marathon"
 	"errors"
 	"github.com/dbcdk/shelob/logging"
-	"go.uber.org/zap"
+	"github.com/dbcdk/shelob/marathon"
 	"github.com/dbcdk/shelob/proxy"
+	"github.com/dbcdk/shelob/util"
+	"github.com/vulcand/oxy/forward"
+	"go.uber.org/zap"
+	"time"
 )
 
 var (
@@ -28,11 +28,11 @@ func GetBackends(config *util.Config, timeout time.Duration) (map[string][]util.
 	}()
 
 	select {
-	case backends := <- resChan:
+	case backends := <-resChan:
 		return backends, nil
-	case err := <- errChan:
+	case err := <-errChan:
 		return nil, err
-	case <- time.After(timeout):
+	case <-time.After(timeout):
 		return nil, errors.New("timeout waiting for Marathon")
 	}
 }
@@ -40,7 +40,7 @@ func GetBackends(config *util.Config, timeout time.Duration) (map[string][]util.
 func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateChan chan time.Time) error {
 	consecutive_errors := 0
 	for {
-		backends, err := GetBackends(config, 5 * time.Second)
+		backends, err := GetBackends(config, 5*time.Second)
 
 		if err != nil {
 			log.Error(err.Error(),

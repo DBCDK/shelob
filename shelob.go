@@ -2,15 +2,15 @@ package main
 
 import (
 	"github.com/Sirupsen/logrus"
+	"github.com/dbcdk/shelob/backends"
 	"github.com/dbcdk/shelob/logging"
+	"github.com/dbcdk/shelob/proxy"
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"time"
-	"github.com/dbcdk/shelob/proxy"
-	"github.com/dbcdk/shelob/backends"
 )
 
 var (
@@ -68,7 +68,7 @@ func main() {
 		},
 		Counters: util.Counters{
 			Requests: *request_counter,
-			Reloads: reload_counter,
+			Reloads:  reload_counter,
 		},
 		Marathon: util.MarathonConfig{
 			Urls:        *marathons,

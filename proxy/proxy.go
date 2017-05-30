@@ -1,20 +1,20 @@
 package proxy
 
 import (
-	"strings"
-	"strconv"
-	"net/http"
-	"github.com/dbcdk/shelob/mux"
-	"time"
-	"github.com/dbcdk/shelob/util"
-	"github.com/dbcdk/shelob/logging"
-	"go.uber.org/zap"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/vulcand/oxy/forward"
-	"github.com/viki-org/dnscache"
-	"net"
 	"context"
+	"github.com/dbcdk/shelob/logging"
+	"github.com/dbcdk/shelob/mux"
+	"github.com/dbcdk/shelob/util"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/viki-org/dnscache"
+	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
+	"go.uber.org/zap"
+	"net"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
 )
 
 func routeToSelf(req *http.Request, config *util.Config) bool {
@@ -88,10 +88,8 @@ func RedirectHandler(config *util.Config) http.Handler {
 					"url":      req.URL.String(),
 				}),
 			)
-
 		}
 	})
-
 }
 
 func CreateForwarder() *forward.Forwarder {

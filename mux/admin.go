@@ -1,8 +1,8 @@
 package mux
 
 import (
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/dbcdk/shelob/util"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	"net/http/pprof"
 )

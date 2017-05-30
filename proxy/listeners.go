@@ -1,14 +1,14 @@
 package proxy
 
 import (
-	"net"
-	"github.com/kavu/go_reuseport"
-	"github.com/dbcdk/shelob/util"
-	"strconv"
 	"github.com/dbcdk/shelob/logging"
-	"net/http"
-	"go.uber.org/zap"
 	"github.com/dbcdk/shelob/mux"
+	"github.com/dbcdk/shelob/util"
+	"github.com/kavu/go_reuseport"
+	"go.uber.org/zap"
+	"net"
+	"net/http"
+	"strconv"
 )
 
 var (
