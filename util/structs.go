@@ -5,6 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/vulcand/oxy/roundrobin"
 	"net/url"
+	"time"
 )
 
 type Config struct {
@@ -22,6 +23,7 @@ type Config struct {
 	Logging         Logging
 	State           State
 	Counters        Counters
+	LastUpdate      time.Time
 }
 
 type Logging struct {
@@ -44,8 +46,10 @@ type MarathonConfig struct {
 }
 
 type ShelobStatus struct {
-	Name string `json:"name"`
-	Up   bool   `json:"up"`
+	Name       string    `json:"name"`
+	Up         bool      `json:"up"`
+	LastUpdate time.Time `json:"lastUpdate"`
+	UpdateLag  float64   `json:"updateLag"`
 }
 
 type Frontend struct {
