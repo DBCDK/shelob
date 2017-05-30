@@ -1,8 +1,6 @@
 package marathon
 
 import (
-	"bufio"
-	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -14,128 +12,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 )
 
 var (
 	log = logging.GetInstance()
 )
-
-func trackUpdates(config *util.Config, updateChan chan time.Time) {
-	marathonEventChan := make(chan RawEvent)
-	go func() {
-		select {
-		case rawEvent := <-marathonEventChan:
-			updateChan <- time.Now()
-			switch rawEvent.Event {
-			case "status_update_event":
-				var event EventStatusUpdate
-				err := json.Unmarshal(rawEvent.Data, &event)
-				if err != nil {
-					println(err.Error())
-					println(string(rawEvent.Data))
-				}
-			case "health_status_changed_event":
-			//var event EventHealthStatusChanged
-			default:
-				println(rawEvent.Event)
-				println(string(rawEvent.Data))
-			}
-
-			var event Event
-			err := json.Unmarshal(rawEvent.Data, &event)
-			if err != nil {
-				println(err.Error())
-				println(string(rawEvent.Data))
-			}
-
-		case <-time.After(time.Second * time.Duration(config.UpdateInterval)):
-			log.Info("No changes for a while, forcing reload",
-				zap.String("event", "reload"),
-			)
-		}
-
-	}()
-
-	for {
-		err := doTrackUpdates(config, marathonEventChan)
-		if err != nil {
-			println("Error:")
-			println(err.Error())
-		}
-		time.Sleep(time.Second)
-	}
-}
-
-func doTrackUpdates(config *util.Config, marathonEventChan chan RawEvent) error {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: config.IgnoreSSLErrors},
-	}
-	client := &http.Client{Transport: tr}
-
-	req, err := http.NewRequest("GET", (config.Marathon.Urls)[0]+"/v2/events", nil)
-	if err != nil {
-		return err
-	}
-
-	// todo: validate the presence of ':' to avoid segfaults
-	if len(config.Marathon.Auth) > 0 {
-		auth := strings.SplitN(config.Marathon.Auth, ":", 2)
-		req.SetBasicAuth(auth[0], auth[1])
-	}
-
-	req.Header.Set("Accept", "text/event-stream")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-
-	event := RawEvent{}
-	eventReader := bufio.NewReader(resp.Body)
-
-	eventId := 0
-
-	for {
-		line, err := eventReader.ReadBytes('\n')
-		if err != nil {
-			return err
-		}
-
-		log.Info("marathon event",
-			zap.String("event", "marathonEvent"),
-			zap.Any("marathon", map[string]interface{}{
-				"eventId": eventId,
-				"event":   string(line),
-			}),
-		)
-
-		switch {
-		case bytes.HasPrefix(line, []byte("event:")):
-			event.Event = strings.TrimSpace(string(line[7:]))
-		case bytes.HasPrefix(line, []byte("data:")):
-			event.Data = line[6:]
-		case bytes.Equal(line, []byte("\r\n")):
-			if len(event.Event) > 0 && len(event.Data) > 0 {
-				marathonEventChan <- event
-			} else {
-			}
-			event = RawEvent{}
-		default:
-			log.Error("ignored marathon event",
-				zap.String("event", "marathonEvent"),
-				zap.Any("marathon", map[string]interface{}{
-					"ignored": eventId,
-				}),
-			)
-
-		}
-
-		eventId += 1
-	}
-}
 
 func UpdateBackends(config *util.Config) (map[string][]util.Backend, error) {
 	backends := make(map[string][]util.Backend)

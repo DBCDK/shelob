@@ -120,8 +120,6 @@ func main() {
 	// messages to this channel will trigger instant updates
 	updateChan := make(chan time.Time)
 
-	// go trackUpdates(updateChan)
-
 	go proxy.StartProxyServer(&config)
 	go proxy.StartAdminServer(&config)
 
