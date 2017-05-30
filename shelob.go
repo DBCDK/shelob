@@ -196,17 +196,6 @@ func main() {
 	adminMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	adminMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 
-	go func() {
-		for {
-			select {
-			case bs := <-backendChan:
-				config.Backends = bs
-				config.RrbBackends = createRoundRobinBackends(forwarder, bs)
-				reload_counter.Inc()
-			}
-		}
-	}()
-
 	go backendManager(&config, backendChan, updateChan)
 	// go trackUpdates(updateChan)
 
@@ -278,36 +267,63 @@ func main() {
 		}
 	})
 
-	log.Info("shelob started on port "+strconv.Itoa(*httpPort),
-		zap.String("event", "started"),
-		zap.Int("port", *httpPort),
-	)
-
+	// start proxy server
 	go func() {
-		metricsServer := &http.Server{
-			Addr:    ":" + strconv.Itoa(*metricsPort),
+		httpAddr := ":" + strconv.Itoa(*httpPort)
+
+		listener, err := createListener("tcp", httpAddr, *reuseHttpPort)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		defer listener.Close()
+
+		proxyServer := &http.Server{
+			Handler: redirect,
+		}
+
+		log.Info("Shelob started on port "+strconv.Itoa(*httpPort),
+			zap.String("event", "started"),
+			zap.Int("port", *httpPort),
+		)
+
+		log.Fatal(proxyServer.Serve(listener).Error(),
+			zap.String("event", "shutdown"),
+			zap.Int("port", *httpPort),
+		)
+	}()
+
+	// start admin/metrics server
+	go func() {
+		httpAddr := ":" + strconv.Itoa(*metricsPort)
+
+		listener, err := createListener("tcp", httpAddr, false)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		defer listener.Close()
+
+		adminServer := &http.Server{
 			Handler: adminMux,
 		}
 
-		metricsServer.ListenAndServe()
+		log.Info("Shelob metrics started on port "+strconv.Itoa(*metricsPort),
+			zap.String("event", "started"),
+			zap.Int("port", *metricsPort),
+		)
+
+		log.Fatal(adminServer.Serve(listener).Error(),
+			zap.String("event", "shutdown"),
+			zap.Int("port", *httpPort),
+		)
 	}()
 
-	proto := "tcp"
-	httpAddr := ":" + strconv.Itoa(*httpPort)
-
-	listener, err := createListener(proto, httpAddr, *reuseHttpPort)
-	if err != nil {
-		panic(err)
+	// start main loop
+	for {
+		select {
+		case bs := <-backendChan:
+			config.Backends = bs
+			config.RrbBackends = createRoundRobinBackends(forwarder, bs)
+			reload_counter.Inc()
+		}
 	}
-	defer listener.Close()
-
-	s := &http.Server{
-		Handler: redirect,
-	}
-
-	log.Fatal(s.Serve(listener).Error(),
-		zap.String("event", "shutdown"),
-		zap.Int("port", *httpPort),
-	)
-
 }
