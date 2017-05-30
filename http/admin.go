@@ -7,7 +7,7 @@ import (
 	"net/http/pprof"
 )
 
-func CreateAdminMux(config *util.Config, shutdownInProgress *bool) *http.ServeMux {
+func CreateAdminMux(config *util.Config) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.Handle("/metrics", promhttp.Handler())

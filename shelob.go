@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"github.com/dbcdk/shelob/proxy"
 )
 
 var (
@@ -35,7 +36,6 @@ var (
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	accessLogEnabled    = kingpin.Flag("access-log", "Enable accesslog to stdout").Default("true").Bool()
-	shutdownInProgress  = false
 	request_counter     = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_server_requests_total",
 		Help: "Total number of http requests",
@@ -144,6 +144,16 @@ func main() {
 		HttpPort:        *httpPort,
 		IgnoreSSLErrors: *insecureSSL,
 		InstanceName:    *instanceName,
+		Logging: util.Logging{
+			AccessLog: *accessLogEnabled,
+		},
+		State: util.State{
+			ShutdownInProgress: false,
+		},
+		Counters: util.Counters{
+			Requests: *request_counter,
+			Reloads: reload_counter,
+		},
 		Marathon: util.MarathonConfig{
 			Urls:        *marathons,
 			Auth:        *marathonAuth,
@@ -161,7 +171,7 @@ func main() {
 		for {
 			select {
 			case shutdownState := <-shutdownChan:
-				shutdownInProgress = shutdownState
+				config.State.ShutdownInProgress = shutdownState
 			}
 		}
 	}()
@@ -173,79 +183,11 @@ func main() {
 	backendChan := make(chan map[string][]util.Backend)
 	updateChan := make(chan time.Time)
 
-	webMux := httputil.CreateWebMux(&config, &shutdownInProgress)
-	adminMux := httputil.CreateAdminMux(&config, &shutdownInProgress)
+
+	adminMux := httputil.CreateAdminMux(&config)
 
 	go backendManager(&config, backendChan, updateChan)
 	// go trackUpdates(updateChan)
-
-	redirect := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		t__start := time.Now().UnixNano()
-		domain := util.StripPortFromDomain(req.Host)
-		status := http.StatusOK
-		request_type := "internal"
-
-		tooManyXForwardedHostHeaders := false
-
-		if xForwardedHostHeader, ok := req.Header["X-Forwarded-Host"]; ok {
-			// The XFH-header must not be repeated
-			if len(xForwardedHostHeader) == 1 {
-				xForwardedHost := xForwardedHostHeader[0]
-				// .. but it can contain a list of hosts. Pick the first one in the list, if that's the case
-				if strings.Contains(xForwardedHost, ",") {
-					parts := strings.Split(xForwardedHost, ",")
-					xForwardedHost = strings.TrimSpace(parts[0])
-				}
-
-				req.Host = xForwardedHost
-			} else {
-				tooManyXForwardedHostHeaders = true
-			}
-			delete(req.Header, "X-Forwarded-Host")
-		}
-
-		if tooManyXForwardedHostHeaders {
-			status = http.StatusBadRequest
-			http.Error(w, "X-Forwarded-Host must not be repeated", status)
-		} else if (domain == "localhost") || (domain == *masterDomain) {
-			webMux.ServeHTTP(w, req)
-		} else if backend := config.RrbBackends[domain]; backend != nil {
-			request_type = "proxy"
-			backend.ServeHTTP(w, req)
-		} else {
-			status = http.StatusNotFound
-			http.Error(w, http.StatusText(status), status)
-		}
-
-		duration := float64(time.Now().UnixNano()-t__start) / 1000000
-
-		promLabels := prometheus.Labels{
-			"domain": domain,
-			"code":   strconv.Itoa(status),
-			"method": req.Method,
-			"type":   request_type,
-		}
-		request_counter.With(promLabels).Inc()
-
-		if *accessLogEnabled {
-			log.Info("request",
-				zap.String("event", "request"),
-				zap.Any("request", map[string]interface{}{
-					"duration": duration,
-					"user": map[string]interface{}{
-						"addr":  req.RemoteAddr,
-						"agent": req.UserAgent(),
-					},
-					"domain":   domain,
-					"method":   req.Method,
-					"protocol": req.Proto,
-					"status":   status,
-					"url":      req.URL.String(),
-				}),
-			)
-
-		}
-	})
 
 	// start proxy server
 	go func() {
@@ -258,7 +200,7 @@ func main() {
 		defer listener.Close()
 
 		proxyServer := &http.Server{
-			Handler: redirect,
+			Handler: proxy.RedirectHandler(&config),
 		}
 
 		log.Info("Shelob started on port "+strconv.Itoa(*httpPort),

@@ -6,11 +6,11 @@ import (
 	"net/http"
 )
 
-func CreateStatusHandler(config *util.Config, shutdownInProgress *bool) func(http.ResponseWriter, *http.Request) {
+func CreateStatusHandler(config *util.Config) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		if *shutdownInProgress {
+		if config.State.ShutdownInProgress {
 			b, _ := json.Marshal(util.ShelobStatus{Name: config.InstanceName, Up: false})
 			http.Error(w, string(b), http.StatusServiceUnavailable)
 		} else {
