@@ -4,18 +4,39 @@ import (
 	"encoding/json"
 	"github.com/dbcdk/shelob/util"
 	"net/http"
+	"time"
 )
 
-func CreateStatusHandler(config *util.Config, shutdownInProgress *bool) func(http.ResponseWriter, *http.Request) {
+func CreateShelobStatus(config *util.Config) util.ShelobStatus {
+	timeSinceUpdate := time.Now().Sub(config.LastUpdate)
+	upperLimit := time.Duration(config.AcceptableUpdateLag) * time.Second
+	stale := !config.HasBeenUpdated || (config.AcceptableUpdateLag != 0 && timeSinceUpdate > upperLimit)
+
+	ok := true
+	ok = ok && !config.State.ShutdownInProgress
+	ok = ok && !stale
+
+	return util.ShelobStatus{
+		Name:       config.InstanceName,
+		Ok:         ok,
+		Up:         !config.State.ShutdownInProgress,
+		Stale:      stale,
+		LastUpdate: config.LastUpdate,
+		UpdateLag:  timeSinceUpdate.Seconds(),
+	}
+}
+
+func CreateStatusHandler(config *util.Config) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		if *shutdownInProgress {
-			b, _ := json.Marshal(util.ShelobStatus{Name: config.InstanceName, Up: false})
-			http.Error(w, string(b), http.StatusServiceUnavailable)
-		} else {
-			b, _ := json.Marshal(util.ShelobStatus{Name: config.InstanceName, Up: true})
+		status := CreateShelobStatus(config)
+		b, _ := json.Marshal(status)
+
+		if status.Ok {
 			w.Write(b)
+		} else {
+			http.Error(w, string(b), http.StatusServiceUnavailable)
 		}
 	}
 }

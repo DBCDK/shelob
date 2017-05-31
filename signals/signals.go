@@ -15,7 +15,7 @@ var (
 	log = logging.GetInstance()
 )
 
-func RegisterSignals(config *util.Config, shutdownChan chan bool) {
+func RegisterSignals(config *util.Config) {
 	if config.ShutdownDelay > 0 {
 		signals := make(chan os.Signal, 1)
 
@@ -23,7 +23,7 @@ func RegisterSignals(config *util.Config, shutdownChan chan bool) {
 
 		go func() {
 			signal := <-signals
-			shutdownChan <- true
+			config.State.ShutdownInProgress = true
 
 			delay := time.Second * time.Duration(config.ShutdownDelay)
 

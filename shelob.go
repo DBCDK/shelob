@@ -1,26 +1,16 @@
 package main
 
 import (
-	"context"
 	"github.com/Sirupsen/logrus"
-	"github.com/dbcdk/shelob/handlers"
+	"github.com/dbcdk/shelob/backends"
 	"github.com/dbcdk/shelob/logging"
-	"github.com/dbcdk/shelob/marathon"
+	"github.com/dbcdk/shelob/proxy"
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
-	"github.com/kavu/go_reuseport"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/viki-org/dnscache"
-	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
-	"go.uber.org/zap"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"net"
-	"net/http"
-	"net/http/pprof"
+	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -35,21 +25,11 @@ var (
 	marathonAuth        = kingpin.Flag("marathon-auth", "username:password for marathon").String()
 	marathonLabelPrefix = kingpin.Flag("marathon-label-prefix", "prefix for marathon labels used for configuration").Default("expose").String()
 	updateInterval      = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
+	acceptableUpdateLag = kingpin.Flag("acceptable-update-lag", "Mark Shelob as down when not receiving updates for this many seconds (0=disabled)").Default("0").Int()
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	accessLogEnabled    = kingpin.Flag("access-log", "Enable accesslog to stdout").Default("true").Bool()
-	shelobItself        = http.NewServeMux()
-	adminMux            = http.NewServeMux()
-	shutdownInProgress  = false
-	request_counter     = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "http_server_requests_total",
-		Help: "Total number of http requests",
-	}, []string{"domain", "code", "method", "type"})
-	reload_counter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "shelob_reloads_total",
-		Help: "Number of times the service definitions have been reloaded",
-	})
-	log = logging.GetInstance()
+	log                 = logging.GetInstance()
 )
 
 func init() {
@@ -60,270 +40,56 @@ func init() {
 			logrus.FieldKeyTime: "timestamp",
 		},
 	})
-
-	prometheus.MustRegister(request_counter)
-	prometheus.MustRegister(reload_counter)
-}
-
-func createForwarder() *forward.Forwarder {
-	resolver := dnscache.New(time.Minute * 1)
-
-	dialContextFn := func(ctx context.Context, network string, address string) (net.Conn, error) {
-		separator := strings.LastIndex(address, ":")
-		ip, _ := resolver.FetchOneString(address[:separator])
-		dialer := &net.Dialer{
-			Timeout: 1 * time.Second,
-		}
-
-		return dialer.DialContext(ctx, network, ip+address[separator:])
-	}
-
-	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		MaxIdleConnsPerHost:   10,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       5 * time.Second,
-		TLSHandshakeTimeout:   2 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		DialContext:           dialContextFn,
-	}
-
-	forwarder, err := forward.New(forward.PassHostHeader(true), forward.RoundTripper(transport))
-
-	if err != nil {
-		panic(err)
-	}
-
-	return forwarder
-}
-
-func createRoundRobinBackends(forwarder *forward.Forwarder, backends map[string][]util.Backend) map[string]*roundrobin.RoundRobin {
-	rrbBackends := make(map[string]*roundrobin.RoundRobin)
-
-	for domain, backendList := range backends {
-		rrbBackends[domain], _ = roundrobin.New(forwarder)
-
-		for _, backend := range backendList {
-			rrbBackends[domain].UpsertServer(backend.Url)
-		}
-	}
-
-	return rrbBackends
-}
-
-func backendManager(config *util.Config, backendChan chan map[string][]util.Backend, updateChan chan time.Time) error {
-	for {
-		backends, err := marathon.UpdateBackends(config)
-
-		if err != nil {
-			println("Error:")
-			println(err.Error())
-		} else {
-			backendChan <- backends
-		}
-
-		select {
-		case eventTime := <-updateChan:
-			delay := time.Now().Sub(eventTime)
-			log.Info("Update requested",
-				zap.String("event", "reload"),
-				zap.String("delay", delay.String()),
-			)
-		case <-time.After(time.Second * time.Duration(*updateInterval)):
-			log.Info("No changes for a while, forcing reload",
-				zap.String("event", "reload"),
-			)
-		}
-	}
-}
-
-func routeToSelf(req *http.Request) bool {
-	return (req.Host == "localhost") || (req.Host == *masterDomain)
-}
-
-func createListener(proto string, laddr string, reuse bool) (net.Listener, error) {
-	if *reuseHttpPort {
-		return reuseport.Listen(proto, laddr)
-	} else {
-		return net.Listen(proto, laddr)
-	}
 }
 
 func main() {
 	defer log.Sync()
 
+	name := *instanceName
+	if name == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Warn("Could not resolve own hostname: " + err.Error())
+		} else {
+			name = hostname + ":" + strconv.Itoa(*httpPort)
+		}
+	}
+
 	config := util.Config{
 		HttpPort:        *httpPort,
+		MetricsPort:     *metricsPort,
+		ReuseHttpPort:   *reuseHttpPort,
 		IgnoreSSLErrors: *insecureSSL,
-		InstanceName:    *instanceName,
+		InstanceName:    name,
+		Logging: util.Logging{
+			AccessLog: *accessLogEnabled,
+		},
+		State: util.State{
+			ShutdownInProgress: false,
+		},
+		Counters: util.CreateAndRegisterCounters(),
 		Marathon: util.MarathonConfig{
 			Urls:        *marathons,
 			Auth:        *marathonAuth,
 			LabelPrefix: *marathonLabelPrefix,
 		},
-		Domain:         *masterDomain,
-		ShutdownDelay:  *shutdownDelay,
-		UpdateInterval: *updateInterval,
-		Backends:       make(map[string][]util.Backend, 0),
-		RrbBackends:    make(map[string]*roundrobin.RoundRobin),
+		Domain:              *masterDomain,
+		ShutdownDelay:       *shutdownDelay,
+		UpdateInterval:      *updateInterval,
+		AcceptableUpdateLag: *acceptableUpdateLag,
+		Backends:            make(map[string][]util.Backend, 0),
+		RrbBackends:         make(map[string]*roundrobin.RoundRobin),
 	}
 
-	shutdownChan := make(chan bool, 1)
-	go func() {
-		for {
-			select {
-			case shutdownState := <-shutdownChan:
-				shutdownInProgress = shutdownState
-			}
-		}
-	}()
+	signals.RegisterSignals(&config)
 
-	signals.RegisterSignals(&config, shutdownChan)
+	go proxy.StartProxyServer(&config)
+	go proxy.StartAdminServer(&config)
 
-	forwarder := createForwarder()
-
-	backendChan := make(chan map[string][]util.Backend)
+	// messages to this channel will trigger instant updates
 	updateChan := make(chan time.Time)
 
-	shelobItself.Handle("/", http.HandlerFunc(handlers.CreateListApplicationsHandler(&config)))
-	shelobItself.Handle("/api/applications", http.HandlerFunc(handlers.CreateListApplicationsHandlerJson(&config)))
-	shelobItself.Handle("/status", http.HandlerFunc(handlers.CreateStatusHandler(&config, &shutdownInProgress)))
-	shelobItself.Handle("/metrics", promhttp.Handler())
-
-	adminMux.Handle("/metrics", promhttp.Handler())
-	adminMux.HandleFunc("/debug/pprof/", pprof.Index)
-	adminMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	adminMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	adminMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-
-	go backendManager(&config, backendChan, updateChan)
-	// go trackUpdates(updateChan)
-
-	redirect := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		t__start := time.Now().UnixNano()
-		domain := util.StripPortFromDomain(req.Host)
-		status := http.StatusOK
-		request_type := "internal"
-
-		tooManyXForwardedHostHeaders := false
-
-		if xForwardedHostHeader, ok := req.Header["X-Forwarded-Host"]; ok {
-			// The XFH-header must not be repeated
-			if len(xForwardedHostHeader) == 1 {
-				xForwardedHost := xForwardedHostHeader[0]
-				// .. but it can contain a list of hosts. Pick the first one in the list, if that's the case
-				if strings.Contains(xForwardedHost, ",") {
-					parts := strings.Split(xForwardedHost, ",")
-					xForwardedHost = strings.TrimSpace(parts[0])
-				}
-
-				req.Host = xForwardedHost
-			} else {
-				tooManyXForwardedHostHeaders = true
-			}
-			delete(req.Header, "X-Forwarded-Host")
-		}
-
-		if tooManyXForwardedHostHeaders {
-			status = http.StatusBadRequest
-			http.Error(w, "X-Forwarded-Host must not be repeated", status)
-		} else if (domain == "localhost") || (domain == *masterDomain) {
-			shelobItself.ServeHTTP(w, req)
-		} else if backend := config.RrbBackends[domain]; backend != nil {
-			request_type = "proxy"
-			backend.ServeHTTP(w, req)
-		} else {
-			status = http.StatusNotFound
-			http.Error(w, http.StatusText(status), status)
-		}
-
-		duration := float64(time.Now().UnixNano()-t__start) / 1000000
-
-		promLabels := prometheus.Labels{
-			"domain": domain,
-			"code":   strconv.Itoa(status),
-			"method": req.Method,
-			"type":   request_type,
-		}
-		request_counter.With(promLabels).Inc()
-
-		if *accessLogEnabled {
-			log.Info("request",
-				zap.String("event", "request"),
-				zap.Any("request", map[string]interface{}{
-					"duration": duration,
-					"user": map[string]interface{}{
-						"addr":  req.RemoteAddr,
-						"agent": req.UserAgent(),
-					},
-					"domain":   domain,
-					"method":   req.Method,
-					"protocol": req.Proto,
-					"status":   status,
-					"url":      req.URL.String(),
-				}),
-			)
-
-		}
-	})
-
-	// start proxy server
-	go func() {
-		httpAddr := ":" + strconv.Itoa(*httpPort)
-
-		listener, err := createListener("tcp", httpAddr, *reuseHttpPort)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		defer listener.Close()
-
-		proxyServer := &http.Server{
-			Handler: redirect,
-		}
-
-		log.Info("Shelob started on port "+strconv.Itoa(*httpPort),
-			zap.String("event", "started"),
-			zap.Int("port", *httpPort),
-		)
-
-		log.Fatal(proxyServer.Serve(listener).Error(),
-			zap.String("event", "shutdown"),
-			zap.Int("port", *httpPort),
-		)
-	}()
-
-	// start admin/metrics server
-	go func() {
-		httpAddr := ":" + strconv.Itoa(*metricsPort)
-
-		listener, err := createListener("tcp", httpAddr, false)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		defer listener.Close()
-
-		adminServer := &http.Server{
-			Handler: adminMux,
-		}
-
-		log.Info("Shelob metrics started on port "+strconv.Itoa(*metricsPort),
-			zap.String("event", "started"),
-			zap.Int("port", *metricsPort),
-		)
-
-		log.Fatal(adminServer.Serve(listener).Error(),
-			zap.String("event", "shutdown"),
-			zap.Int("port", *httpPort),
-		)
-	}()
-
 	// start main loop
-	for {
-		select {
-		case bs := <-backendChan:
-			config.Backends = bs
-			config.RrbBackends = createRoundRobinBackends(forwarder, bs)
-			reload_counter.Inc()
-		}
-	}
+	forwarder := proxy.CreateForwarder()
+	backends.BackendManager(&config, forwarder, updateChan)
 }
