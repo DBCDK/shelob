@@ -17,8 +17,8 @@ import (
 	"time"
 )
 
-func routeToSelf(req *http.Request, config *util.Config) bool {
-	return (req.Host == "localhost") || (req.Host == config.Domain)
+func routeToSelf(config *util.Config, domain string) bool {
+	return (domain == "localhost") || (domain == config.Domain)
 }
 
 func RedirectHandler(config *util.Config) http.Handler {
@@ -52,7 +52,7 @@ func RedirectHandler(config *util.Config) http.Handler {
 		if tooManyXForwardedHostHeaders {
 			status = http.StatusBadRequest
 			http.Error(w, "X-Forwarded-Host must not be repeated", status)
-		} else if routeToSelf(req, config) {
+		} else if routeToSelf(config, domain) {
 			webMux.ServeHTTP(w, req)
 		} else if backend := config.RrbBackends[domain]; backend != nil {
 			request_type = "proxy"
