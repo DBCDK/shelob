@@ -25,6 +25,7 @@ var (
 	marathonAuth        = kingpin.Flag("marathon-auth", "username:password for marathon").String()
 	marathonLabelPrefix = kingpin.Flag("marathon-label-prefix", "prefix for marathon labels used for configuration").Default("expose").String()
 	updateInterval      = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
+	acceptableUpdateLag = kingpin.Flag("acceptable-update-lag", "Mark Shelob as down when not receiving updates for this many seconds (0=disabled)").Default("0").Int()
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	accessLogEnabled    = kingpin.Flag("access-log", "Enable accesslog to stdout").Default("true").Bool()
@@ -72,11 +73,12 @@ func main() {
 			Auth:        *marathonAuth,
 			LabelPrefix: *marathonLabelPrefix,
 		},
-		Domain:         *masterDomain,
-		ShutdownDelay:  *shutdownDelay,
-		UpdateInterval: *updateInterval,
-		Backends:       make(map[string][]util.Backend, 0),
-		RrbBackends:    make(map[string]*roundrobin.RoundRobin),
+		Domain:              *masterDomain,
+		ShutdownDelay:       *shutdownDelay,
+		UpdateInterval:      *updateInterval,
+		AcceptableUpdateLag: *acceptableUpdateLag,
+		Backends:            make(map[string][]util.Backend, 0),
+		RrbBackends:         make(map[string]*roundrobin.RoundRobin),
 	}
 
 	signals.RegisterSignals(&config)

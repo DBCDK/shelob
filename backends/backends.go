@@ -60,6 +60,7 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 		config.Counters.Reloads.Inc()
 		config.LastUpdate = time.Now()
 		config.Counters.LastUpdate.Set(float64(config.LastUpdate.Unix()))
+		config.HasBeenUpdated = true
 
 		select {
 		case eventTime := <-updateChan:

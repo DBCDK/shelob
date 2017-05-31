@@ -9,13 +9,18 @@ import (
 
 func CreateShelobStatus(config *util.Config) util.ShelobStatus {
 	timeSinceUpdate := time.Now().Sub(config.LastUpdate)
-	upperLimit := time.Duration(2*config.UpdateInterval) * time.Second
-	updateOk := timeSinceUpdate < upperLimit
-	up := !config.State.ShutdownInProgress && updateOk
+	upperLimit := time.Duration(config.AcceptableUpdateLag) * time.Second
+	stale := !config.HasBeenUpdated || (config.AcceptableUpdateLag != 0 && timeSinceUpdate > upperLimit)
+
+	ok := true
+	ok = ok && !config.State.ShutdownInProgress
+	ok = ok && !stale
 
 	return util.ShelobStatus{
 		Name:       config.InstanceName,
-		Up:         up,
+		Ok:         ok,
+		Up:         !config.State.ShutdownInProgress,
+		Stale:      stale,
 		LastUpdate: config.LastUpdate,
 		UpdateLag:  timeSinceUpdate.Seconds(),
 	}
@@ -28,7 +33,7 @@ func CreateStatusHandler(config *util.Config) func(http.ResponseWriter, *http.Re
 		status := CreateShelobStatus(config)
 		b, _ := json.Marshal(status)
 
-		if status.Up {
+		if status.Ok {
 			w.Write(b)
 		} else {
 			http.Error(w, string(b), http.StatusServiceUnavailable)
