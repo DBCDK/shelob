@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/viki-org/dnscache"
 	"github.com/vulcand/oxy/forward"
+	"github.com/vulcand/oxy/utils"
 	"github.com/vulcand/oxy/roundrobin"
 	"go.uber.org/zap"
 	"net"
@@ -24,7 +25,8 @@ func routeToSelf(config *util.Config, domain string) bool {
 func RedirectHandler(config *util.Config) http.Handler {
 	webMux := mux.CreateWebMux(config)
 
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+  return http.HandlerFunc(func(plainwriter http.ResponseWriter, req *http.Request) {
+    w := &utils.ProxyWriter { W: plainwriter, }
 		t__start := time.Now().UnixNano()
 		domain := util.StripPortFromDomain(req.Host)
 		status := http.StatusOK
@@ -57,6 +59,7 @@ func RedirectHandler(config *util.Config) http.Handler {
 		} else if backend := config.RrbBackends[domain]; backend != nil {
 			request_type = "proxy"
 			backend.ServeHTTP(w, req)
+      status = w.StatusCode()
 		} else {
 			status = http.StatusNotFound
 			http.Error(w, http.StatusText(status), status)
