@@ -5,7 +5,7 @@ import:
   - forward
   - roundrobin
 - package: gopkg.in/alecthomas/kingpin.v2
-- package: github.com/Sirupsen/logrus
+- package: github.com/sirupsen/logrus
 - package: github.com/prometheus/client_golang
   subpackages:
   - promhttp
