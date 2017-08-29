@@ -26,7 +26,7 @@ func RedirectHandler(config *util.Config) http.Handler {
 	webMux := mux.CreateWebMux(config)
 
   return http.HandlerFunc(func(plainwriter http.ResponseWriter, req *http.Request) {
-    w := &utils.ProxyWriter { W: plainwriter, }
+		w := &utils.ProxyWriter { W: plainwriter, }
 		t__start := time.Now().UnixNano()
 		domain := util.StripPortFromDomain(req.Host)
 		status := http.StatusOK
@@ -59,7 +59,7 @@ func RedirectHandler(config *util.Config) http.Handler {
 		} else if backend := config.RrbBackends[domain]; backend != nil {
 			request_type = "proxy"
 			backend.ServeHTTP(w, req)
-      status = w.StatusCode()
+			status = w.StatusCode()
 		} else {
 			status = http.StatusNotFound
 			http.Error(w, http.StatusText(status), status)
