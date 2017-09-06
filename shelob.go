@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/dbcdk/shelob/backends"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/proxy"
