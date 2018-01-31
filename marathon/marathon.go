@@ -31,7 +31,7 @@ func UpdateBackends(config *util.Config) (map[string][]util.Backend, error) {
 	}
 
 	var indexedApps = indexApps(apps)
-	var indexedTasks = indexTasks(tasks)
+	var indexedTasks = indexHealthyTasks(tasks)
 	var labelPrefix = config.Marathon.LabelPrefix + ".port."
 
 	for appId, app := range indexedApps {
@@ -187,14 +187,17 @@ func indexApps(apps Apps) (indexedApps map[string]App) {
 	return indexedApps
 }
 
-func indexTasks(tasks Tasks) (indexedTasks map[string][]Task) {
+func indexHealthyTasks(tasks Tasks) (indexedTasks map[string][]Task) {
 	indexedTasks = make(map[string][]Task)
 
 	for _, task := range tasks.Tasks {
 		if indexedTasks[task.Id] == nil {
 			indexedTasks[task.Id] = []Task{}
 		}
-		indexedTasks[task.AppId] = append(indexedTasks[task.AppId], task)
+		// Skip non healthy Tasks
+		if len(task.HealthCheckResults) > 0 && task.HealthCheckResults[0].Alive {
+			indexedTasks[task.AppId] = append(indexedTasks[task.AppId], task)
+		}
 	}
 	return indexedTasks
 }
