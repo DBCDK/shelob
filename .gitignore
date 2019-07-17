@@ -1,0 +1,12 @@
+# intellij
+*.iml
+.idea
+
+/vendor
+
+# main application binary
+/shelob
+
+# nix result links
+result*
+
