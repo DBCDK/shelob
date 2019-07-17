@@ -26,7 +26,7 @@ func RedirectHandler(config *util.Config) http.Handler {
 	webMux := mux.CreateWebMux(config)
 
   return http.HandlerFunc(func(plainwriter http.ResponseWriter, req *http.Request) {
-		w := &utils.ProxyWriter { W: plainwriter, }
+		w := utils.NewProxyWriter(plainwriter)
 		t__start := time.Now().UnixNano()
 		domain := util.StripPortFromDomain(req.Host)
 		status := http.StatusOK
