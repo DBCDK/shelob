@@ -2,8 +2,8 @@ package backends
 
 import (
 	"errors"
+	"github.com/dbcdk/shelob/kubernetes"
 	"github.com/dbcdk/shelob/logging"
-	"github.com/dbcdk/shelob/marathon"
 	"github.com/dbcdk/shelob/proxy"
 	"github.com/dbcdk/shelob/util"
 	"github.com/vulcand/oxy/forward"
@@ -19,7 +19,7 @@ func GetBackends(config *util.Config, timeout time.Duration) (map[string][]util.
 	resChan := make(chan map[string][]util.Backend, 1)
 	errChan := make(chan error, 1)
 	go func() {
-		backends, err := marathon.UpdateBackends(config)
+		backends, err := kubernetes.UpdateBackends(config)
 		if err != nil {
 			errChan <- err
 		} else {
@@ -33,7 +33,7 @@ func GetBackends(config *util.Config, timeout time.Duration) (map[string][]util.
 	case err := <-errChan:
 		return nil, err
 	case <-time.After(timeout):
-		return nil, errors.New("timeout waiting for Marathon")
+		return nil, errors.New("timeout waiting for Kubernetes")
 	}
 }
 
