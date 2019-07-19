@@ -26,7 +26,7 @@ type Config struct {
 	Counters            Counters
 	LastUpdate          time.Time
 	HasBeenUpdated      bool
-	Kubeconfig			*rest.Config
+	Kubeconfig          *rest.Config
 }
 
 type Logging struct {

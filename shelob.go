@@ -1,13 +1,13 @@
 package main
 
 import (
-	"github.com/dbcdk/shelob/kubernetes"
-	"github.com/sirupsen/logrus"
 	"github.com/dbcdk/shelob/backends"
+	"github.com/dbcdk/shelob/kubernetes"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/proxy"
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
+	"github.com/sirupsen/logrus"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
@@ -72,8 +72,8 @@ func main() {
 		State: util.State{
 			ShutdownInProgress: false,
 		},
-		Counters: util.CreateAndRegisterCounters(),
-		Kubeconfig:			 kubeconfig,
+		Counters:            util.CreateAndRegisterCounters(),
+		Kubeconfig:          kubeconfig,
 		Domain:              *masterDomain,
 		ShutdownDelay:       *shutdownDelay,
 		UpdateInterval:      *updateInterval,

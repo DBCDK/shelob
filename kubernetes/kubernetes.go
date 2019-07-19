@@ -16,7 +16,6 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 )
 
-
 func UpdateBackends(config *util.Config) (map[string][]util.Backend, error) {
 
 	clients, err := GetKubeClient(config.Kubeconfig)
@@ -58,9 +57,9 @@ func toBackendList(scheme string, service Service, endpoints []Endpoint) []util.
 	for _, e := range endpoints {
 		if e.Port == service.TargetPort {
 			backends = append(backends, util.Backend{
-				Url: &url.URL {
+				Url: &url.URL{
 					Scheme: scheme,
-					Host: e.Address + ":" + strconv.FormatInt(int64(e.Port), 10),
+					Host:   e.Address + ":" + strconv.FormatInt(int64(e.Port), 10),
 				},
 			})
 		}
@@ -99,12 +98,12 @@ func mapService(service v13.Service) map[PortMatch]Service {
 		if sourcePort > 0 && targetPort > 0 {
 			out[PortMatch{
 				Object: Object{
-					Name: service.Name,
+					Name:      service.Name,
 					Namespace: service.Namespace,
 				},
 				Port: sourcePort,
 			}] = Service{
-				Port: uint16(s.Port),
+				Port:       uint16(s.Port),
 				TargetPort: targetPort,
 			}
 		}
@@ -121,7 +120,7 @@ func getEndpoints(client v12.EndpointsInterface) (map[Object][]Endpoint, error) 
 
 	out := make(map[Object][]Endpoint)
 	for _, e := range endpoints.Items {
-		out[Object{ Name: e.Name, Namespace: e.Namespace }] = mapEndpoint(e)
+		out[Object{Name: e.Name, Namespace: e.Namespace}] = mapEndpoint(e)
 	}
 
 	return out, nil
@@ -137,7 +136,7 @@ func getIngresses(client v1beta1.IngressInterface) (map[HostMatch]Ingress, error
 	for _, i := range ingresses.Items {
 		for host, backend := range mapIngress(i) {
 			out[HostMatch{
-				Object:   Object { Name: backend.Name, Namespace: i.Namespace },
+				Object:   Object{Name: backend.Name, Namespace: i.Namespace},
 				HostName: host,
 			}] = backend
 		}
@@ -204,8 +203,8 @@ func mapBackend(namespace string, backend v1beta12.IngressBackend) *Ingress {
 		return nil
 	}
 	return &Ingress{
-		Name: backend.ServiceName,
-		Port: uint16(port),
+		Name:   backend.ServiceName,
+		Port:   uint16(port),
 		Scheme: "http",
 	}
 }
@@ -225,4 +224,3 @@ func i32toPort(port int32) (uint16, error) {
 		return 0, fmt.Errorf("int out of range: %d", port)
 	}
 }
-
