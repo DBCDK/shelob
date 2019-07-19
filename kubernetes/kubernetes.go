@@ -47,9 +47,7 @@ func mergeBackends(ingresses map[HostMatch]Ingress, services map[PortMatch]Servi
 
 	backends := make(map[string][]util.Backend)
 	for n, i := range ingresses {
-		if bknds := toBackendList(i.Scheme, services[PortMatch{ Object: n.Object, Port: i.Port }], endpoints[n.Object]); len(bknds) > 0  {
-			backends[n.HostName] = bknds
-		}
+		backends[n.HostName] = toBackendList(i.Scheme, services[PortMatch{Object: n.Object, Port: i.Port}], endpoints[n.Object])
 	}
 
 	return backends

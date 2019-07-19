@@ -57,9 +57,14 @@ func RedirectHandler(config *util.Config) http.Handler {
 		} else if routeToSelf(config, domain) {
 			webMux.ServeHTTP(w, req)
 		} else if backend := config.RrbBackends[domain]; backend != nil {
-			request_type = "proxy"
-			backend.ServeHTTP(w, req)
-			status = w.StatusCode()
+			if len(backend.Servers()) > 0 {
+				request_type = "proxy"
+				backend.ServeHTTP(w, req)
+				status = w.StatusCode()
+			} else {
+				status = http.StatusServiceUnavailable
+				http.Error(w, http.StatusText(status), status)
+			}
 		} else {
 			status = http.StatusNotFound
 			http.Error(w, http.StatusText(status), status)
