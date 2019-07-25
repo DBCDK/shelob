@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/sirupsen/logrus"
 	"github.com/dbcdk/shelob/backends"
+	"github.com/dbcdk/shelob/kubernetes"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/proxy"
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
+	"github.com/sirupsen/logrus"
 	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
@@ -15,15 +16,13 @@ import (
 )
 
 var (
-	app                 = kingpin.New("shelob", "Automatically updated HTTP reverse proxy for Marathon").Version("1.0")
+	app                 = kingpin.New("shelob", "Automatically updated HTTP reverse proxy").Version("1.0")
 	httpPort            = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
 	metricsPort         = kingpin.Flag("metrics-port", "Http port to serve Prometheus metrics on").Default("8081").Int()
 	reuseHttpPort       = kingpin.Flag("reuse-port", "Enable SO_REUSEPORT for the main http port").Default("false").Bool()
 	instanceName        = kingpin.Flag("name", "Instance name. Used in headers and on status pages.").String()
 	masterDomain        = kingpin.Flag("domain", "This will enable all apps to by default be exposed as a subdomain to this domain.").String()
-	marathons           = kingpin.Flag("marathon", "url to marathon (repeatable for multiple instances of marathon)").Required().Strings()
-	marathonAuth        = kingpin.Flag("marathon-auth", "username:password for marathon").String()
-	marathonLabelPrefix = kingpin.Flag("marathon-label-prefix", "prefix for marathon labels used for configuration").Default("expose").String()
+	kubeConfig          = kingpin.Flag("kubeconfig", "Path to kubeconfig file with kubernets connection details").ExistingFile()
 	updateInterval      = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
 	acceptableUpdateLag = kingpin.Flag("acceptable-update-lag", "Mark Shelob as down when not receiving updates for this many seconds (0=disabled)").Default("0").Int()
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
@@ -55,6 +54,12 @@ func main() {
 		}
 	}
 
+	kubeconfig, err := kubernetes.GetKubeConfig(kubeConfig)
+	if err != nil {
+		log.Error("Cannot start without a valid kubeconfig: " + err.Error())
+		os.Exit(1)
+	}
+
 	config := util.Config{
 		HttpPort:        *httpPort,
 		MetricsPort:     *metricsPort,
@@ -67,12 +72,8 @@ func main() {
 		State: util.State{
 			ShutdownInProgress: false,
 		},
-		Counters: util.CreateAndRegisterCounters(),
-		Marathon: util.MarathonConfig{
-			Urls:        *marathons,
-			Auth:        *marathonAuth,
-			LabelPrefix: *marathonLabelPrefix,
-		},
+		Counters:            util.CreateAndRegisterCounters(),
+		Kubeconfig:          kubeconfig,
 		Domain:              *masterDomain,
 		ShutdownDelay:       *shutdownDelay,
 		UpdateInterval:      *updateInterval,

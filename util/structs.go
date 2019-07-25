@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/vulcand/oxy/roundrobin"
+	"k8s.io/client-go/rest"
 	"net/url"
 	"time"
 )
@@ -14,7 +15,6 @@ type Config struct {
 	ReuseHttpPort       bool
 	IgnoreSSLErrors     bool
 	InstanceName        string
-	Marathon            MarathonConfig
 	Domain              string
 	ShutdownDelay       int
 	UpdateInterval      int
@@ -26,6 +26,7 @@ type Config struct {
 	Counters            Counters
 	LastUpdate          time.Time
 	HasBeenUpdated      bool
+	Kubeconfig          *rest.Config
 }
 
 type Logging struct {
@@ -40,12 +41,6 @@ type Counters struct {
 	Requests   prometheus.CounterVec
 	Reloads    prometheus.Counter
 	LastUpdate prometheus.Gauge
-}
-
-type MarathonConfig struct {
-	Auth        string
-	LabelPrefix string
-	Urls        []string
 }
 
 type ShelobStatus struct {
