@@ -91,8 +91,8 @@ func main() {
 		AcceptableUpdateLag: *acceptableUpdateLag,
 		Backends:            make(map[string][]util.Backend, 0),
 		RrbBackends:         make(map[string]*roundrobin.RoundRobin),
-		DisableWatch:		 *disableWatch,
-		IgnoreNamespaces:	 ignoreNamespacesMap,
+		DisableWatch:        *disableWatch,
+		IgnoreNamespaces:    ignoreNamespacesMap,
 	}
 
 	signals.RegisterSignals(&config)

@@ -19,7 +19,6 @@ import (
 
 var updateMutex sync.Mutex
 
-
 func WatchBackends(config *util.Config, updateChan chan util.Reload) error {
 	clients, err := GetKubeClient(config.Kubeconfig)
 	if err != nil {

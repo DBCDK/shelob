@@ -29,7 +29,7 @@ type Config struct {
 	HasBeenUpdated      bool
 	Kubeconfig          *rest.Config
 	DisableWatch        bool
-	IgnoreNamespaces	map[string]bool
+	IgnoreNamespaces    map[string]bool
 }
 
 type Logging struct {

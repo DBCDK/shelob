@@ -109,7 +109,7 @@ func poll(reloadRollup int, reload func(update util.Reload)) {
 	for {
 		if len(queue) > 0 {
 			queueMutex.Lock()
-			discarded := len(queue)-1
+			discarded := len(queue) - 1
 			last, queue = queue[discarded], queue[:discarded]
 			if discarded > 0 {
 				log.Info("Reload events throttled",
@@ -121,6 +121,6 @@ func poll(reloadRollup int, reload func(update util.Reload)) {
 			reload(last)
 		}
 
-		time.Sleep(time.Duration(reloadRollup)*time.Second)
+		time.Sleep(time.Duration(reloadRollup) * time.Second)
 	}
 }
