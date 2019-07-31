@@ -8,11 +8,15 @@ import (
 	"github.com/dbcdk/shelob/util"
 	"github.com/vulcand/oxy/forward"
 	"go.uber.org/zap"
+	"sync"
 	"time"
 )
 
 var (
-	log = logging.GetInstance()
+	log                = logging.GetInstance()
+	queueMutex         = sync.Mutex{}
+	queue              = make([]util.Reload, 0)
+	consecutive_errors = 0
 )
 
 func GetBackends(config *util.Config, timeout time.Duration) (map[string][]util.Backend, error) {
@@ -37,9 +41,40 @@ func GetBackends(config *util.Config, timeout time.Duration) (map[string][]util.
 	}
 }
 
-func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateChan chan time.Time) error {
-	consecutive_errors := 0
-	for {
+func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateChan chan util.Reload) (err error) {
+	go func() {
+		for {
+			select {
+			case update := <-updateChan:
+				delay := time.Now().Sub(update.Time)
+				log.Debug("Reload requested",
+					zap.String("delay", delay.String()),
+					zap.String("reason", update.Reason),
+				)
+				trigger(update)
+			case <-time.After(time.Second * time.Duration(config.ReloadEvery)):
+				log.Debug("Reload-every time elapsed without updates, forcing reload")
+				trigger(util.NewReload("reload-every-time-elapsed"))
+			}
+		}
+	}()
+
+	// watch changes in kubernetes api and trigger update
+	if !config.DisableWatch {
+		go kubernetes.WatchBackends(config, updateChan)
+	} else {
+		log.Info("API watch has been disabled by config flag, reloading changes with fixed interval only",
+			zap.Int("interval", config.ReloadEvery),
+		)
+	}
+
+	poll(config.ReloadRollup, func(update util.Reload) {
+		delay := time.Now().Sub(update.Time)
+		log.Info("Reloading",
+			zap.String("delay", delay.String()),
+			zap.String("reason", update.Reason),
+			zap.String("event", "reload"),
+		)
 		backends, err := GetBackends(config, 5*time.Second)
 
 		if err != nil {
@@ -48,9 +83,8 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 				zap.Int("consecutiveErrors", consecutive_errors),
 			)
 
-			time.Sleep(time.Second)
 			consecutive_errors += 1
-			continue
+			trigger(util.NewReload("retry"))
 		}
 
 		consecutive_errors = 0
@@ -61,18 +95,32 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 		config.LastUpdate = time.Now()
 		config.Counters.LastUpdate.Set(float64(config.LastUpdate.Unix()))
 		config.HasBeenUpdated = true
+	})
 
-		select {
-		case eventTime := <-updateChan:
-			delay := time.Now().Sub(eventTime)
-			log.Info("Update requested",
-				zap.String("event", "reload"),
-				zap.String("delay", delay.String()),
-			)
-		case <-time.After(time.Second * time.Duration(config.UpdateInterval)):
-			log.Info("No changes for a while, forcing reload",
-				zap.String("event", "reload"),
-			)
+	return
+}
+
+func trigger(reload util.Reload) {
+	queue = append(queue, reload)
+}
+
+func poll(reloadRollup int, reload func(update util.Reload)) {
+	var last util.Reload
+	for {
+		if len(queue) > 0 {
+			queueMutex.Lock()
+			discarded := len(queue) - 1
+			last, queue = queue[discarded], queue[:discarded]
+			if discarded > 0 {
+				log.Info("Reload events throttled",
+					zap.Int("discarded", discarded),
+				)
+				queue = make([]util.Reload, 0)
+			}
+			queueMutex.Unlock()
+			reload(last)
 		}
+
+		time.Sleep(time.Duration(reloadRollup) * time.Second)
 	}
 }

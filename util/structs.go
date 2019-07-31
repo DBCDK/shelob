@@ -17,7 +17,8 @@ type Config struct {
 	InstanceName        string
 	Domain              string
 	ShutdownDelay       int
-	UpdateInterval      int
+	ReloadEvery         int
+	ReloadRollup        int
 	AcceptableUpdateLag int
 	Backends            map[string][]Backend
 	RrbBackends         map[string]*roundrobin.RoundRobin
@@ -27,6 +28,8 @@ type Config struct {
 	LastUpdate          time.Time
 	HasBeenUpdated      bool
 	Kubeconfig          *rest.Config
+	DisableWatch        bool
+	IgnoreNamespaces    map[string]bool
 }
 
 type Logging struct {
@@ -54,6 +57,18 @@ type ShelobStatus struct {
 
 type Frontend struct {
 	Backends []Backend
+}
+
+type Reload struct {
+	Time   time.Time
+	Reason string
+}
+
+func NewReload(reason string) Reload {
+	return Reload{
+		Time:   time.Now(),
+		Reason: reason,
+	}
 }
 
 type Backend struct {

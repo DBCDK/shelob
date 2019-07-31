@@ -12,7 +12,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
 	"strconv"
-	"time"
+	"strings"
 )
 
 var (
@@ -23,11 +23,14 @@ var (
 	instanceName        = kingpin.Flag("name", "Instance name. Used in headers and on status pages.").String()
 	masterDomain        = kingpin.Flag("domain", "This will enable all apps to by default be exposed as a subdomain to this domain.").String()
 	kubeConfig          = kingpin.Flag("kubeconfig", "Path to kubeconfig file with kubernets connection details").ExistingFile()
-	updateInterval      = kingpin.Flag("update-interval", "Force updates this often [s]").Default("5").Int()
+	reloadEvery         = kingpin.Flag("reload-every", "Force updates this often [s]").Default("5").Int()
+	reloadRollup        = kingpin.Flag("reload-rollup", "Limit number of reloads by merging them every n seconds").Default("1").Int()
 	acceptableUpdateLag = kingpin.Flag("acceptable-update-lag", "Mark Shelob as down when not receiving updates for this many seconds (0=disabled)").Default("0").Int()
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
 	insecureSSL         = kingpin.Flag("insecureSSL", "Ignore SSL errors").Default("false").Bool()
 	accessLogEnabled    = kingpin.Flag("access-log", "Enable accesslog to stdout").Default("true").Bool()
+	disableWatch        = kingpin.Flag("disable-watch", "Disables the kubernetes watch-api feature, causing updates to only happen once per 'reload-every' interval.").Default("false").Bool()
+	ignoreNamespaces    = kingpin.Flag("ignore-namespaces", "Ignore endpoint watch-events from one or more (comma-separated) namespaces").Default("default,kube-system").String()
 	log                 = logging.GetInstance()
 )
 
@@ -60,6 +63,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	ignoreNamespacesMap := make(map[string]bool)
+	for _, n := range strings.Split(*ignoreNamespaces, ",") {
+		if n := strings.TrimSpace(n); n != "" {
+			ignoreNamespacesMap[n] = true
+		}
+	}
+
 	config := util.Config{
 		HttpPort:        *httpPort,
 		MetricsPort:     *metricsPort,
@@ -76,10 +86,13 @@ func main() {
 		Kubeconfig:          kubeconfig,
 		Domain:              *masterDomain,
 		ShutdownDelay:       *shutdownDelay,
-		UpdateInterval:      *updateInterval,
+		ReloadEvery:         *reloadEvery,
+		ReloadRollup:        *reloadRollup,
 		AcceptableUpdateLag: *acceptableUpdateLag,
 		Backends:            make(map[string][]util.Backend, 0),
 		RrbBackends:         make(map[string]*roundrobin.RoundRobin),
+		DisableWatch:        *disableWatch,
+		IgnoreNamespaces:    ignoreNamespacesMap,
 	}
 
 	signals.RegisterSignals(&config)
@@ -88,7 +101,7 @@ func main() {
 	go proxy.StartAdminServer(&config)
 
 	// messages to this channel will trigger instant updates
-	updateChan := make(chan time.Time)
+	updateChan := make(chan util.Reload)
 
 	// start main loop
 	forwarder := proxy.CreateForwarder()

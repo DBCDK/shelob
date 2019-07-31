@@ -14,7 +14,7 @@ require (
 	github.com/kavu/go_reuseport v0.0.0-20170329120611-db1bbbc1f61f
 	github.com/mailgun/timetools v0.0.0-20150505213551-fd192d755b00 // indirect
 	github.com/prometheus/client_golang v1.0.0
-	github.com/prometheus/common v0.6.0 // indirect
+	github.com/prometheus/common v0.6.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/viki-org/dnscache v0.0.0-20130720023526-c70c1f23c5d8
