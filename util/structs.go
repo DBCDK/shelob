@@ -40,6 +40,7 @@ type Logging struct {
 
 type State struct {
 	ShutdownInProgress bool
+	ShutdownChan       chan bool
 }
 
 type Counters struct {

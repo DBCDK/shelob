@@ -5,85 +5,106 @@ import (
 	"github.com/dbcdk/shelob/util"
 	"go.uber.org/zap"
 	v13 "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/tools/cache"
 )
 
 func WatchBackends(config *util.Config, updateChan chan util.Reload) error {
-	clients, err := GetKubeClient(config.Kubeconfig)
-	if err != nil {
-		return err
-	}
 
-	emptyOptions := v1.ListOptions{}
-
-	ingressWatch, err := clients.ExtensionsV1beta1().Ingresses("").Watch(emptyOptions)
-	if err != nil {
-		return err
-	}
-	defer ingressWatch.Stop()
-
-	serviceWatch, err := clients.CoreV1().Services("").Watch(emptyOptions)
-	if err != nil {
-		return err
-	}
-	defer serviceWatch.Stop()
-
-	endpointWatch, err := clients.CoreV1().Endpoints("").Watch(emptyOptions)
-	if err != nil {
-		return err
-	}
-	defer endpointWatch.Stop()
-
-	var event watch.Event
-	for {
-		select {
-		case event = <-ingressWatch.ResultChan():
-		case event = <-serviceWatch.ResultChan():
-		case event = <-endpointWatch.ResultChan():
-			// ignore endpoint events selected namespaces, because noise. See e.g.:
-			// https://github.com/kubernetes/kubernetes/issues/34627
-			ev, ok := event.Object.(*v13.Endpoints)
-			if ok {
-				if _, ok := config.IgnoreNamespaces[ev.Namespace]; ok {
-					log.Debug("Ignored kubernetes endpoint-API event",
-						zap.String("type", string(event.Type)),
-						zap.String("namespace", ev.Namespace),
-						zap.String("name", ev.Name),
-					)
-					continue
-				}
-			}
-		}
+	addRemoveFunc := func(obj interface{}) {
 		log.Debug("Received kubernetes API event (backends)",
-			zap.String("type", string(event.Type)),
-			zap.String("object", fmt.Sprint(event.Object)),
+			zap.String("object", fmt.Sprint(obj)),
 		)
 		updateChan <- util.NewReload("api-change-backends")
 	}
+	updateFunc := func(oldObj interface{}, newObj interface{}) {
+		addRemoveFunc(newObj)
+	}
+	endpointAddRemoveFunc := func(obj interface{}) {
+		ev, ok := obj.(*v13.Endpoints)
+		if ok {
+			if _, ok := config.IgnoreNamespaces[ev.Namespace]; ok {
+				log.Debug("Ignored kubernetes endpoint-API event",
+					zap.String("namespace", ev.Namespace),
+					zap.String("name", ev.Name),
+				)
+				return
+			}
+			addRemoveFunc(obj)
+		}
+	}
+	endpointUpdateFunc := func(oldObj interface{}, newObj interface{}) {
+		endpointAddRemoveFunc(newObj)
+	}
+
+	stopChan := make(chan struct{})
+	informerFactory, err := GetInformerFactory(config.Kubeconfig, v13.NamespaceAll)
+	if err != nil {
+		return err
+	}
+
+	ingressInformer := informerFactory.Extensions().V1beta1().Ingresses().Informer()
+	ingressInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    addRemoveFunc,
+		UpdateFunc: updateFunc,
+		DeleteFunc: addRemoveFunc,
+	})
+	go ingressInformer.Run(stopChan)
+
+	serviceInformer := informerFactory.Core().V1().Services().Informer()
+	serviceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    addRemoveFunc,
+		UpdateFunc: updateFunc,
+		DeleteFunc: addRemoveFunc,
+	})
+	go serviceInformer.Run(stopChan)
+
+	endpointInformer := informerFactory.Core().V1().Endpoints().Informer()
+	endpointInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    endpointAddRemoveFunc,
+		UpdateFunc: endpointUpdateFunc,
+		DeleteFunc: endpointAddRemoveFunc,
+	})
+	go endpointInformer.Run(stopChan)
+
+	<-config.State.ShutdownChan
+	stopChan <- struct{}{}
+
+	return nil
 }
 
 func WatchSecrets(config *util.Config, updateChan chan util.Reload) error {
-	clients, err := GetKubeClient(config.Kubeconfig)
-	if err != nil {
-		return err
-	}
 
-	secretWatch, err := clients.CoreV1().Secrets(config.CertNamespace).Watch(v1.ListOptions{
-		LabelSelector: SECRET_HOSTNAME_LABEL,
-	})
-	if err != nil {
-		return err
-	}
-	defer secretWatch.Stop()
-
-	var event watch.Event
-	for {
-		event = <-secretWatch.ResultChan()
+	addRemoveFunc := func(obj interface{}) {
 		log.Debug("Received kubernetes API event (secrets)",
-			zap.String("type", string(event.Type)),
-			zap.String("object", fmt.Sprint(event.Object)),
+			zap.String("object", fmt.Sprint(obj)),
 		)
-		updateChan <- util.NewReload("api-change-secrets")
+
+		if secret, ok := obj.(*v13.Secret); ok {
+			if _, hasLabel := secret.GetLabels()[SECRET_HOSTNAME_LABEL]; hasLabel {
+				updateChan <- util.NewReload("api-change-secrets")
+			}
+		}
 	}
+	updateFunc := func(oldObj interface{}, newObj interface{}) {
+		addRemoveFunc(newObj)
+	}
+	stopChan := make(chan struct{})
+
+	informerFactory, err := GetInformerFactory(config.Kubeconfig, config.CertNamespace)
+	if err != nil {
+		return err
+	}
+
+	informer := informerFactory.Core().V1().Secrets().Informer()
+	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    addRemoveFunc,
+		UpdateFunc: updateFunc,
+		DeleteFunc: addRemoveFunc,
+	})
+	go informer.Run(stopChan)
+
+	<-config.State.ShutdownChan
+	stopChan <- struct{}{}
+
+	return nil
 }
