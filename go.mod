@@ -10,6 +10,7 @@ require (
 	github.com/google/gofuzz v1.0.0 // indirect
 	github.com/googleapis/gnostic v0.3.0 // indirect
 	github.com/gorilla/websocket v1.4.0 // indirect
+	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/kavu/go_reuseport v0.0.0-20170329120611-db1bbbc1f61f
 	github.com/mailgun/timetools v0.0.0-20150505213551-fd192d755b00 // indirect

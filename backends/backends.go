@@ -47,13 +47,13 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 			select {
 			case update := <-updateChan:
 				delay := time.Now().Sub(update.Time)
-				log.Debug("Reload requested",
+				log.Debug("Backend reload requested",
 					zap.String("delay", delay.String()),
 					zap.String("reason", update.Reason),
 				)
 				trigger(update)
 			case <-time.After(time.Second * time.Duration(config.ReloadEvery)):
-				log.Debug("Reload-every time elapsed without updates, forcing reload")
+				log.Debug("Reload-every time elapsed without updates, forcing reload of backends")
 				trigger(util.NewReload("reload-every-time-elapsed"))
 			}
 		}
@@ -68,9 +68,10 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 		)
 	}
 
+	trigger(util.NewReload("initial"))
 	poll(config.ReloadRollup, func(update util.Reload) {
 		delay := time.Now().Sub(update.Time)
-		log.Info("Reloading",
+		log.Info("Loading backends",
 			zap.String("delay", delay.String()),
 			zap.String("reason", update.Reason),
 			zap.String("event", "reload"),
@@ -101,6 +102,8 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 }
 
 func trigger(reload util.Reload) {
+	queueMutex.Lock()
+	defer queueMutex.Unlock()
 	queue = append(queue, reload)
 }
 
@@ -112,7 +115,7 @@ func poll(reloadRollup int, reload func(update util.Reload)) {
 			discarded := len(queue) - 1
 			last, queue = queue[discarded], queue[:discarded]
 			if discarded > 0 {
-				log.Info("Reload events throttled",
+				log.Info("Backend reload events throttled",
 					zap.Int("discarded", discarded),
 				)
 				queue = make([]util.Reload, 0)

@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	HttpPort            int
+	HttpsPort           int
 	MetricsPort         int
 	ReuseHttpPort       bool
 	IgnoreSSLErrors     bool
@@ -30,6 +31,7 @@ type Config struct {
 	Kubeconfig          *rest.Config
 	DisableWatch        bool
 	IgnoreNamespaces    map[string]bool
+	CertNamespace       string
 }
 
 type Logging struct {
@@ -38,6 +40,7 @@ type Logging struct {
 
 type State struct {
 	ShutdownInProgress bool
+	ShutdownChan       chan bool
 }
 
 type Counters struct {

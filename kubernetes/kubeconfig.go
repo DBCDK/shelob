@@ -4,6 +4,7 @@ import (
 	"github.com/dbcdk/shelob/logging"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -42,4 +43,12 @@ func GetKubeClient(config *rest.Config) (*kubernetes.Clientset, error) {
 		return nil, err
 	}
 	return clients, nil
+}
+
+func GetInformerFactory(config *rest.Config, namespace string) (informers.SharedInformerFactory, error) {
+	clients, err := GetKubeClient(config)
+	if err != nil {
+		return nil, err
+	}
+	return informers.NewSharedInformerFactoryWithOptions(clients, 0, informers.WithNamespace(namespace)), nil
 }

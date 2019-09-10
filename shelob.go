@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/dbcdk/shelob/backends"
+	"github.com/dbcdk/shelob/certs"
 	"github.com/dbcdk/shelob/kubernetes"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/proxy"
@@ -18,12 +19,13 @@ import (
 var (
 	app                 = kingpin.New("shelob", "Automatically updated HTTP reverse proxy").Version("1.0")
 	httpPort            = kingpin.Flag("port", "Http port to listen on").Default("8080").Int()
+	httpsPort           = kingpin.Flag("tlsport", "Https port to listen on").Default("8443").Int()
 	metricsPort         = kingpin.Flag("metrics-port", "Http port to serve Prometheus metrics on").Default("8081").Int()
 	reuseHttpPort       = kingpin.Flag("reuse-port", "Enable SO_REUSEPORT for the main http port").Default("false").Bool()
 	instanceName        = kingpin.Flag("name", "Instance name. Used in headers and on status pages.").String()
 	masterDomain        = kingpin.Flag("domain", "This will enable all apps to by default be exposed as a subdomain to this domain.").String()
 	kubeConfig          = kingpin.Flag("kubeconfig", "Path to kubeconfig file with kubernets connection details").ExistingFile()
-	reloadEvery         = kingpin.Flag("reload-every", "Force updates this often [s]").Default("5").Int()
+	reloadEvery         = kingpin.Flag("reload-every", "Force updates this often [s]").Default("30").Int()
 	reloadRollup        = kingpin.Flag("reload-rollup", "Limit number of reloads by merging them every n seconds").Default("1").Int()
 	acceptableUpdateLag = kingpin.Flag("acceptable-update-lag", "Mark Shelob as down when not receiving updates for this many seconds (0=disabled)").Default("0").Int()
 	shutdownDelay       = kingpin.Flag("shutdown-delay", "Delay shutdown by this many seconds [s]").Int()
@@ -31,6 +33,7 @@ var (
 	accessLogEnabled    = kingpin.Flag("access-log", "Enable accesslog to stdout").Default("true").Bool()
 	disableWatch        = kingpin.Flag("disable-watch", "Disables the kubernetes watch-api feature, causing updates to only happen once per 'reload-every' interval.").Default("false").Bool()
 	ignoreNamespaces    = kingpin.Flag("ignore-namespaces", "Ignore endpoint watch-events from one or more (comma-separated) namespaces").Default("default,kube-system").String()
+	certNamespace       = kingpin.Flag("cert-namespace", "Namespace in which to search for issued certificates, if unset the certificate loader is disabled").String()
 	log                 = logging.GetInstance()
 )
 
@@ -72,6 +75,7 @@ func main() {
 
 	config := util.Config{
 		HttpPort:        *httpPort,
+		HttpsPort:       *httpsPort,
 		MetricsPort:     *metricsPort,
 		ReuseHttpPort:   *reuseHttpPort,
 		IgnoreSSLErrors: *insecureSSL,
@@ -93,17 +97,20 @@ func main() {
 		RrbBackends:         make(map[string]*roundrobin.RoundRobin),
 		DisableWatch:        *disableWatch,
 		IgnoreNamespaces:    ignoreNamespacesMap,
+		CertNamespace:       *certNamespace,
 	}
 
 	signals.RegisterSignals(&config)
 
-	go proxy.StartProxyServer(&config)
-	go proxy.StartAdminServer(&config)
+	// messages to these channels will trigger instant updates
+	backendsChan := make(chan util.Reload)
+	certsChan := make(chan util.Reload)
 
-	// messages to this channel will trigger instant updates
-	updateChan := make(chan util.Reload)
+	go proxy.StartProxyServer(&config)
+	go proxy.StartTLSProxyServer(&config, certs.New(&config, certsChan))
+	go proxy.StartAdminServer(&config)
 
 	// start main loop
 	forwarder := proxy.CreateForwarder()
-	backends.BackendManager(&config, forwarder, updateChan)
+	backends.BackendManager(&config, forwarder, backendsChan)
 }

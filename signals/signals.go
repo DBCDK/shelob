@@ -24,6 +24,7 @@ func RegisterSignals(config *util.Config) {
 		go func() {
 			signal := <-signals
 			config.State.ShutdownInProgress = true
+			config.State.ShutdownChan <- true
 
 			delay := time.Second * time.Duration(config.ShutdownDelay)
 
