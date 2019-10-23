@@ -2,10 +2,12 @@ package certs
 
 import (
 	"crypto/tls"
+	"fmt"
 	"github.com/dbcdk/shelob/kubernetes"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/util"
 	"go.uber.org/zap"
+	"strings"
 	"sync"
 	"time"
 )
@@ -37,8 +39,12 @@ func New(config *util.Config, certUpdateChan chan util.Reload) CertLookup {
 	return handler
 }
 
-func (ch *CertHandler) Lookup(hostName string) *tls.Certificate {
-	return ch.certs[hostName]
+func (ch *CertHandler) Lookup(hostName string) (cert *tls.Certificate) {
+	if cert, _ = ch.certs[hostName]; cert == nil && ch.config.WildcardCertPrefix != "" {
+		parts := strings.Split(hostName, ".")[1:]
+		cert = ch.certs[fmt.Sprintf("%s.%s", ch.config.WildcardCertPrefix, strings.Join(parts, "."))]
+	}
+	return
 }
 
 func (ch *CertHandler) reconcileCerts(certUpdateChan chan util.Reload) {

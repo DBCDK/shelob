@@ -34,6 +34,7 @@ var (
 	disableWatch        = kingpin.Flag("disable-watch", "Disables the kubernetes watch-api feature, causing updates to only happen once per 'reload-every' interval.").Default("false").Bool()
 	ignoreNamespaces    = kingpin.Flag("ignore-namespaces", "Ignore endpoint watch-events from one or more (comma-separated) namespaces").Default("default,kube-system").String()
 	certNamespace       = kingpin.Flag("cert-namespace", "Namespace in which to search for issued certificates, if unset the certificate loader is disabled").String()
+	wildcardCertPrefix  = kingpin.Flag("wildcard-cert-prefix", "The name prefix to use for wildcard certificates in Kubernetes, e.g. (prefix).wildcardexample.com.").Default("").String()
 	log                 = logging.GetInstance()
 )
 
@@ -98,6 +99,7 @@ func main() {
 		DisableWatch:        *disableWatch,
 		IgnoreNamespaces:    ignoreNamespacesMap,
 		CertNamespace:       *certNamespace,
+		WildcardCertPrefix:  *wildcardCertPrefix,
 	}
 
 	signals.RegisterSignals(&config)
