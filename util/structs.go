@@ -32,6 +32,7 @@ type Config struct {
 	DisableWatch        bool
 	IgnoreNamespaces    map[string]bool
 	CertNamespace       string
+	WildcardCertPrefix  string
 }
 
 type Logging struct {
