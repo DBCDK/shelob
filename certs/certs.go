@@ -2,10 +2,12 @@ package certs
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"github.com/dbcdk/shelob/kubernetes"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/util"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"strings"
 	"sync"
@@ -16,6 +18,7 @@ var log = logging.GetInstance()
 
 type CertLookup interface {
 	Lookup(hostName string) *tls.Certificate
+	RegisterValidityMonitoring()
 }
 
 type CertHandler struct {
@@ -23,6 +26,8 @@ type CertHandler struct {
 	certs      map[string]*tls.Certificate
 	queueMutex sync.Mutex
 	queue      []util.Reload
+	certValidity *prometheus.GaugeVec
+	certValidityLastUpdated prometheus.Gauge
 }
 
 func New(config *util.Config, certUpdateChan chan util.Reload) CertLookup {
@@ -68,6 +73,7 @@ func (ch *CertHandler) reconcileCerts(certUpdateChan chan util.Reload) {
 			return
 		}
 		ch.certs = certs
+		ch.checkValidity(certs)
 	})
 
 	go kubernetes.WatchSecrets(ch.config, certUpdateChan)
@@ -113,4 +119,36 @@ func (ch *CertHandler) poll(reload func(update util.Reload)) {
 
 		time.Sleep(time.Duration(ch.config.ReloadRollup) * time.Second)
 	}
+}
+
+func (ch *CertHandler) RegisterValidityMonitoring() {
+	ch.certValidity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "shelob_cert_expiry_days",
+		Help: "Number of days until expiry for shelob TLS-certificates",
+	}, []string{"domain"})
+	ch.certValidityLastUpdated = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "shelob_cert_expiry_last_update_epoch",
+		Help: "Unix time/epoch of last successful certificate monitor update",
+	})
+
+	prometheus.MustRegister(ch.certValidity, ch.certValidityLastUpdated)
+}
+
+func (ch *CertHandler) checkValidity(certificates map[string]*tls.Certificate) {
+	now := time.Now()
+	for n, c := range certificates {
+		if len(c.Certificate) > 0 {
+			if cert, err := x509.ParseCertificate(c.Certificate[0]); err == nil {
+				ch.certValidity.With(prometheus.Labels{
+					"domain": n,
+				}).Set(cert.NotAfter.Sub(now).Hours()/24)
+			} else {
+				log.Error("Parse of certificate for domain failed",
+					zap.String("domain", n),
+				)
+				return
+			}
+		}
+	}
+	ch.certValidityLastUpdated.SetToCurrentTime()
 }

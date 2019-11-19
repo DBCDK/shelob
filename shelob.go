@@ -108,8 +108,11 @@ func main() {
 	backendsChan := make(chan util.Reload)
 	certsChan := make(chan util.Reload)
 
+	certHandler := certs.New(&config, certsChan)
+	certHandler.RegisterValidityMonitoring()
+
 	go proxy.StartProxyServer(&config)
-	go proxy.StartTLSProxyServer(&config, certs.New(&config, certsChan))
+	go proxy.StartTLSProxyServer(&config, certHandler)
 	go proxy.StartAdminServer(&config)
 
 	// start main loop
