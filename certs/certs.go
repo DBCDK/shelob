@@ -22,11 +22,11 @@ type CertLookup interface {
 }
 
 type CertHandler struct {
-	config     *util.Config
-	certs      map[string]*tls.Certificate
-	queueMutex sync.Mutex
-	queue      []util.Reload
-	certValidity *prometheus.GaugeVec
+	config                  *util.Config
+	certs                   map[string]*tls.Certificate
+	queueMutex              sync.Mutex
+	queue                   []util.Reload
+	certValidity            *prometheus.GaugeVec
 	certValidityLastUpdated prometheus.Gauge
 }
 
@@ -141,7 +141,7 @@ func (ch *CertHandler) checkValidity(certificates map[string]*tls.Certificate) {
 			if cert, err := x509.ParseCertificate(c.Certificate[0]); err == nil {
 				ch.certValidity.With(prometheus.Labels{
 					"domain": n,
-				}).Set(cert.NotAfter.Sub(now).Hours()/24)
+				}).Set(cert.NotAfter.Sub(now).Hours() / 24)
 			} else {
 				log.Error("Parse of certificate for domain failed",
 					zap.String("domain", n),
