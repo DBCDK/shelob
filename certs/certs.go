@@ -9,6 +9,7 @@ import (
 	"github.com/dbcdk/shelob/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -136,19 +137,26 @@ func (ch *CertHandler) RegisterValidityMonitoring() {
 
 func (ch *CertHandler) checkValidity(certificates map[string]*tls.Certificate) {
 	now := time.Now()
+
+	ch.certValidity.Reset()
+	//^^ Reset should be fine, because the block below shouldn't return.
+	//Panics can still occur, but this should raise another alert
 	for n, c := range certificates {
 		if len(c.Certificate) > 0 {
+			// by setting expiry days to something low, we assure an alert is triggered for errors
+			var expiryDays = -1.
 			if cert, err := x509.ParseCertificate(c.Certificate[0]); err == nil {
-				ch.certValidity.With(prometheus.Labels{
-					"domain": n,
-				}).Set(cert.NotAfter.Sub(now).Hours() / 24)
+				expiryDays = cert.NotAfter.Sub(now).Hours() / 24
 			} else {
 				log.Error("Parse of certificate for domain failed",
 					zap.String("domain", n),
 				)
-				return
 			}
+			ch.certValidity.With(prometheus.Labels{
+				"domain": n,
+			}).Set(math.Floor(expiryDays))
 		}
 	}
+
 	ch.certValidityLastUpdated.SetToCurrentTime()
 }
