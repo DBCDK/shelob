@@ -86,6 +86,7 @@ func main() {
 		},
 		State: util.State{
 			ShutdownInProgress: false,
+			ShutdownChan: make(chan bool),
 		},
 		Counters:            util.CreateAndRegisterCounters(),
 		Kubeconfig:          kubeconfig,
