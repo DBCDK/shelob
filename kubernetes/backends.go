@@ -170,9 +170,11 @@ func mapIngress(in v1beta12.Ingress) map[string]Ingress {
 
 		//find suitable path target (we only support / for now)
 		var backend *Ingress
-		for _, p := range r.HTTP.Paths {
-			if p.Path == "" || p.Path == "/" {
-				backend = mapBackend(in.Namespace, p.Backend)
+		if r.HTTP != nil {
+			for _, p := range r.HTTP.Paths {
+				if p.Path == "" || p.Path == "/" {
+					backend = mapBackend(in.Namespace, p.Backend)
+				}
 			}
 		}
 
