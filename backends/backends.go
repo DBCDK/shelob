@@ -19,8 +19,8 @@ var (
 	consecutive_errors = 0
 )
 
-func GetBackends(config *util.Config, timeout time.Duration) (map[string][]util.Backend, error) {
-	resChan := make(chan map[string][]util.Backend, 1)
+func GetBackends(config *util.Config, timeout time.Duration) (map[string][]util.BackendInterface, error) {
+	resChan := make(chan map[string][]util.BackendInterface, 1)
 	errChan := make(chan error, 1)
 	go func() {
 		backends, err := kubernetes.UpdateBackends(config)
@@ -92,6 +92,7 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 
 		config.Backends = backends
 		config.RrbBackends = proxy.CreateRoundRobinBackends(forwarder, backends)
+		config.RedirectBackends = CreateRedirectBackends(backends)
 		config.Counters.Reloads.Inc()
 		config.LastUpdate = time.Now()
 		config.Counters.LastUpdate.Set(float64(config.LastUpdate.Unix()))
@@ -99,6 +100,18 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 	})
 
 	return
+}
+
+func CreateRedirectBackends(backends map[string][]util.BackendInterface) map[string]*util.Redirect {
+	redirectBackends := make(map[string]*util.Redirect)
+	for h, l := range backends {
+		for _, b := range l {
+			if b.Redirect() != nil {
+				redirectBackends[h] = b.Redirect()
+			}
+		}
+	}
+	return redirectBackends
 }
 
 func trigger(reload util.Reload) {

@@ -1,5 +1,7 @@
 package kubernetes
 
+import "github.com/dbcdk/shelob/util"
+
 type Object struct {
 	Name      string
 	Namespace string
@@ -24,6 +26,7 @@ type Ingress struct {
 	Scheme string
 	Name   string
 	Port   uint16
+	Redirect *util.Redirect
 }
 
 type Service struct {

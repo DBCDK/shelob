@@ -15,7 +15,12 @@ import (
 	"strconv"
 )
 
-func UpdateBackends(config *util.Config) (map[string][]util.Backend, error) {
+const (
+	REDIRECT_URL_ANNOTATION = "shelob.redirect.url"
+	REDIRECT_CODE_ANNOTATION = "shelob.redirect.code"
+)
+
+func UpdateBackends(config *util.Config) (map[string][]util.BackendInterface, error) {
 
 	clients, err := GetKubeClient(config.Kubeconfig)
 	if err != nil {
@@ -40,18 +45,22 @@ func UpdateBackends(config *util.Config) (map[string][]util.Backend, error) {
 	return mergeBackends(ingresses, services, endpoints), nil
 }
 
-func mergeBackends(ingresses map[HostMatch]Ingress, services map[PortMatch]Service, endpoints map[Object][]Endpoint) map[string][]util.Backend {
+func mergeBackends(ingresses map[HostMatch]Ingress, services map[PortMatch]Service, endpoints map[Object][]Endpoint) map[string][]util.BackendInterface {
 
-	backends := make(map[string][]util.Backend)
+	backends := make(map[string][]util.BackendInterface)
 	for n, i := range ingresses {
-		backends[n.HostName] = toBackendList(i.Scheme, services[PortMatch{Object: n.Object, Port: i.Port}], endpoints[n.Object])
+		if i.Redirect != nil {
+			backends[n.HostName] = []util.BackendInterface { *i.Redirect }
+		} else {
+			backends[n.HostName] = toBackendList(i.Scheme, services[PortMatch{Object: n.Object, Port: i.Port}], endpoints[n.Object])
+		}
 	}
 
 	return backends
 }
 
-func toBackendList(scheme string, service Service, endpoints []Endpoint) []util.Backend {
-	backends := make([]util.Backend, 0)
+func toBackendList(scheme string, service Service, endpoints []Endpoint) []util.BackendInterface {
+	backends := make([]util.BackendInterface, 0)
 	for _, e := range endpoints {
 		if e.Port == service.TargetPort {
 			backends = append(backends, util.Backend{
@@ -178,7 +187,15 @@ func mapIngress(in v1beta12.Ingress) map[string]Ingress {
 			}
 		}
 
-		if r.Host != "" && backend != nil {
+		redirect := mapRedirect(in)
+		if r.Host != "" && redirect != nil {
+			out[r.Host] = Ingress{
+				Scheme: "http",
+				Name:   r.Host,
+				Port:   80,
+				Redirect: redirect,
+			}
+		} else if r.Host != "" && backend != nil {
 			out[r.Host] = *backend
 		} else {
 			log.Debug("Ignoring ingress rule with no hostname, suitable backend, catch-all path or rule for /",
@@ -189,6 +206,28 @@ func mapIngress(in v1beta12.Ingress) map[string]Ingress {
 	}
 
 	return out
+}
+
+func mapRedirect(in v1beta12.Ingress) (data *util.Redirect) {
+	data = nil
+	_redirectUrl, redirect := in.Annotations[REDIRECT_URL_ANNOTATION]
+	if redirect {
+		url, err := url.Parse(_redirectUrl)
+		if err == nil {
+			_code, err := strconv.ParseInt(in.Annotations[REDIRECT_CODE_ANNOTATION], 10, 16)
+			var code uint16
+			if err == nil && (_code == 301 || _code == 302) {
+				code = uint16(_code)
+			} else {
+				code = 302 // "302 Found" is the default
+			}
+			data = &util.Redirect{
+				Url:  url,
+				Code: code,
+			}
+		}
+	}
+	return
 }
 
 func mapBackend(namespace string, backend v1beta12.IngressBackend) *Ingress {

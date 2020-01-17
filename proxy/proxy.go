@@ -50,6 +50,8 @@ func RedirectHandler(config *util.Config) http.Handler {
 		if tooManyXForwardedHostHeaders {
 			status = http.StatusBadRequest
 			http.Error(w, "X-Forwarded-Host must not be repeated", status)
+		} else if backend := config.RedirectBackends[domain]; backend != nil {
+			http.Redirect(w, req, backend.Url.String(), int(backend.Code))
 		} else if backend := config.RrbBackends[domain]; backend != nil {
 			if len(backend.Servers()) > 0 {
 				request_type = "proxy"
@@ -125,14 +127,16 @@ func CreateForwarder() *forward.Forwarder {
 	return forwarder
 }
 
-func CreateRoundRobinBackends(forwarder *forward.Forwarder, backends map[string][]util.Backend) map[string]*roundrobin.RoundRobin {
+func CreateRoundRobinBackends(forwarder *forward.Forwarder, backends map[string][]util.BackendInterface) map[string]*roundrobin.RoundRobin {
 	rrbBackends := make(map[string]*roundrobin.RoundRobin)
 
 	for domain, backendList := range backends {
 		rrbBackends[domain], _ = roundrobin.New(forwarder)
 
 		for _, backend := range backendList {
-			rrbBackends[domain].UpsertServer(backend.Url)
+			if backend.Proxy() != nil {
+				rrbBackends[domain].UpsertServer(backend.Proxy().Url)
+			}
 		}
 	}
 
