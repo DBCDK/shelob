@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	REDIRECT_URL_ANNOTATION = "shelob.redirect.url"
+	REDIRECT_URL_ANNOTATION  = "shelob.redirect.url"
 	REDIRECT_CODE_ANNOTATION = "shelob.redirect.code"
 )
 
@@ -50,7 +50,7 @@ func mergeBackends(ingresses map[HostMatch]Ingress, services map[PortMatch]Servi
 	backends := make(map[string][]util.BackendInterface)
 	for n, i := range ingresses {
 		if i.Redirect != nil {
-			backends[n.HostName] = []util.BackendInterface { *i.Redirect }
+			backends[n.HostName] = []util.BackendInterface{*i.Redirect}
 		} else {
 			backends[n.HostName] = toBackendList(i.Scheme, services[PortMatch{Object: n.Object, Port: i.Port}], endpoints[n.Object])
 		}
@@ -190,9 +190,9 @@ func mapIngress(in v1beta12.Ingress) map[string]Ingress {
 		redirect := mapRedirect(in)
 		if r.Host != "" && redirect != nil {
 			out[r.Host] = Ingress{
-				Scheme: "http",
-				Name:   r.Host,
-				Port:   80,
+				Scheme:   "http",
+				Name:     r.Host,
+				Port:     80,
 				Redirect: redirect,
 			}
 		} else if r.Host != "" && backend != nil {

@@ -23,9 +23,9 @@ type Endpoint struct {
 }
 
 type Ingress struct {
-	Scheme string
-	Name   string
-	Port   uint16
+	Scheme   string
+	Name     string
+	Port     uint16
 	Redirect *util.Redirect
 }
 
