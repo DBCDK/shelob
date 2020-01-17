@@ -34,7 +34,6 @@ type Config struct {
 	IgnoreNamespaces    map[string]bool
 	CertNamespace       string
 	WildcardCertPrefix  string
-
 }
 
 type Logging struct {
@@ -82,7 +81,7 @@ type Backend struct {
 }
 
 type Redirect struct {
-	Url *url.URL
+	Url  *url.URL
 	Code uint16
 }
 
