@@ -10,7 +10,7 @@ import (
 
 func CreateListApplicationsHandler(config *util.Config) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data := make(map[string][]util.Backend)
+		data := make(map[string][]util.BackendInterface)
 		port := "80"
 
 		if strings.Contains(r.Host, ":") {

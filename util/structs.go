@@ -21,8 +21,9 @@ type Config struct {
 	ReloadEvery         int
 	ReloadRollup        int
 	AcceptableUpdateLag int
-	Backends            map[string][]Backend
+	Backends            map[string][]BackendInterface
 	RrbBackends         map[string]*roundrobin.RoundRobin
+	RedirectBackends    map[string]*Redirect
 	Logging             Logging
 	State               State
 	Counters            Counters
@@ -33,6 +34,7 @@ type Config struct {
 	IgnoreNamespaces    map[string]bool
 	CertNamespace       string
 	WildcardCertPrefix  string
+
 }
 
 type Logging struct {
@@ -77,6 +79,32 @@ func NewReload(reason string) Reload {
 
 type Backend struct {
 	Url *url.URL
+}
+
+type Redirect struct {
+	Url *url.URL
+	Code uint16
+}
+
+type BackendInterface interface {
+	Proxy() *Backend
+	Redirect() *Redirect
+}
+
+func (b Backend) Proxy() *Backend {
+	return &b
+}
+
+func (r Redirect) Proxy() *Backend {
+	return nil
+}
+
+func (b Backend) Redirect() *Redirect {
+	return nil
+}
+
+func (r Redirect) Redirect() *Redirect {
+	return &r
 }
 
 // convert url to string when serializing
