@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/mux"
 	"github.com/dbcdk/shelob/util"
@@ -114,6 +115,9 @@ func CreateForwarder() *forward.Forwarder {
 		TLSHandshakeTimeout:   2 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		DialContext:           dialContextFn,
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
 	}
 
 	forwarder, err := forward.New(forward.PassHostHeader(true), forward.RoundTripper(transport))
