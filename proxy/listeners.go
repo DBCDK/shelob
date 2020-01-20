@@ -68,6 +68,7 @@ func StartTLSProxyServer(config *util.Config, cl certs.CertLookup) {
 	proxyServer := &http.Server{
 		Handler: RedirectHandler(config),
 		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
 			GetCertificate: func(info *tls.ClientHelloInfo) (certificate *tls.Certificate, e error) {
 				if cert := cl.Lookup(info.ServerName); cert != nil {
 					return cert, nil
