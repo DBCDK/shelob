@@ -51,12 +51,14 @@ func mergeFrontends(ingresses map[HostMatch]Ingress, services map[PortMatch]Serv
 		if i.Redirect != nil {
 			frontends[n.HostName] = &util.Frontend{
 				Action:          util.BACKEND_ACTION_REDIRECT,
+				PlainHTTPPolicy: util.PLAIN_HTTP_ALLOW,
 				Redirect:        i.Redirect,
 				Backends:        []util.Backend{},
 			}
 		} else {
 			frontends[n.HostName] = &util.Frontend{
 				Action:          util.BACKEND_ACTION_PROXY_RR,
+				PlainHTTPPolicy: util.PLAIN_HTTP_REDIRECT,
 				Redirect:        nil,
 				Backends:        toBackendList(i.Scheme, services[PortMatch{Object: n.Object, Port: i.Port}], endpoints[n.Object]),
 			}
