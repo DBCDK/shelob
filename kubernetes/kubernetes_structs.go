@@ -27,6 +27,7 @@ type Ingress struct {
 	Name     string
 	Port     uint16
 	Redirect *util.Redirect
+	PlainHTTPPolicy uint16
 }
 
 type Service struct {
