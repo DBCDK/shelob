@@ -27,7 +27,7 @@ func RedirectHandler(config *util.Config) http.Handler {
 		t__start := time.Now().UnixNano()
 		domain := util.StripPortFromDomain(req.Host)
 		status := http.StatusOK
-		request_type := "internal"
+		request_type := "unknown"
 
 		tooManyXForwardedHostHeaders := false
 
@@ -51,20 +51,15 @@ func RedirectHandler(config *util.Config) http.Handler {
 		if tooManyXForwardedHostHeaders {
 			status = http.StatusBadRequest
 			http.Error(w, "X-Forwarded-Host must not be repeated", status)
-		} else if backend := config.RedirectBackends[domain]; backend != nil {
-			http.Redirect(w, req, backend.Url.String(), int(backend.Code))
-		} else if backend := config.RrbBackends[domain]; backend != nil {
-			if len(backend.Servers()) > 0 {
-				request_type = "proxy"
-				backend.ServeHTTP(w, req)
-				status = w.StatusCode()
-			} else {
-				status = http.StatusServiceUnavailable
-				http.Error(w, http.StatusText(status), status)
-			}
+		} else if frontend := config.Frontends[domain]; frontend != nil { // select frontend
+			request_type = dispatchRequest(frontend, w, req, config.Forwarder)
 		} else {
+			// TODO: make internal endpoint serving as explicit frontends -> get rid of this fallback
+			// no matching frontends, try serving internally
+			request_type = "internal"
 			webMux.ServeHTTP(w, req)
 		}
+		status = w.StatusCode()
 
 		duration := float64(time.Now().UnixNano()-t__start) / 1000000
 
@@ -131,18 +126,40 @@ func CreateForwarder() *forward.Forwarder {
 	return forwarder
 }
 
-func CreateRoundRobinBackends(forwarder *forward.Forwarder, backends map[string][]util.BackendInterface) map[string]*roundrobin.RoundRobin {
-	rrbBackends := make(map[string]*roundrobin.RoundRobin)
-
-	for domain, backendList := range backends {
-		rrbBackends[domain], _ = roundrobin.New(forwarder)
-
-		for _, backend := range backendList {
-			if backend.Proxy() != nil {
-				rrbBackends[domain].UpsertServer(backend.Proxy().Url)
-			}
+func dispatchRequest(frontend *util.Frontend, w http.ResponseWriter, req *http.Request, forwarder *forward.Forwarder) string {
+	switch frontend.Action {
+	case util.BACKEND_ACTION_REDIRECT:
+		http.Redirect(w, req, frontend.Redirect.Url.String(), int(frontend.Redirect.Code))
+	case util.BACKEND_ACTION_PROXY_RR:
+		rr := createRRBackends(forwarder, frontend.Backends)
+		if len(rr.Servers()) > 0 {
+			rr.ServeHTTP(w, req)
+		} else {
+			status := http.StatusServiceUnavailable
+			http.Error(w, http.StatusText(status), status)
 		}
 	}
 
-	return rrbBackends
+	return actionToPrometheusRequestType(frontend.Action)
+}
+
+func actionToPrometheusRequestType(a uint16) (request_type string) {
+	switch a {
+	case util.BACKEND_ACTION_SERVE_INTERNAL:
+		request_type = "internal"
+	case util.BACKEND_ACTION_REDIRECT:
+		request_type = "redirect"
+	case util.BACKEND_ACTION_PROXY_RR:
+		request_type = "proxy"
+	}
+	return
+}
+
+func createRRBackends(forwarder *forward.Forwarder, backends []util.Backend) *roundrobin.RoundRobin {
+	rr, _ := roundrobin.New(forwarder)
+	for _, backend := range backends {
+		rr.UpsertServer(backend.Url)
+	}
+
+	return rr
 }

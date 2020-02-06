@@ -20,7 +20,7 @@ const (
 	REDIRECT_CODE_ANNOTATION = "shelob.redirect.code"
 )
 
-func UpdateBackends(config *util.Config) (map[string][]util.BackendInterface, error) {
+func UpdateFrontends(config *util.Config) (map[string]*util.Frontend, error) {
 
 	clients, err := GetKubeClient(config.Kubeconfig)
 	if err != nil {
@@ -42,25 +42,32 @@ func UpdateBackends(config *util.Config) (map[string][]util.BackendInterface, er
 		return nil, err
 	}
 
-	return mergeBackends(ingresses, services, endpoints), nil
+	return mergeFrontends(ingresses, services, endpoints), nil
 }
 
-func mergeBackends(ingresses map[HostMatch]Ingress, services map[PortMatch]Service, endpoints map[Object][]Endpoint) map[string][]util.BackendInterface {
-
-	backends := make(map[string][]util.BackendInterface)
+func mergeFrontends(ingresses map[HostMatch]Ingress, services map[PortMatch]Service, endpoints map[Object][]Endpoint) map[string]*util.Frontend {
+	frontends := make(map[string]*util.Frontend)
 	for n, i := range ingresses {
 		if i.Redirect != nil {
-			backends[n.HostName] = []util.BackendInterface{*i.Redirect}
+			frontends[n.HostName] = &util.Frontend{
+				Action:          util.BACKEND_ACTION_REDIRECT,
+				Redirect:        i.Redirect,
+				Backends:        []util.Backend{},
+			}
 		} else {
-			backends[n.HostName] = toBackendList(i.Scheme, services[PortMatch{Object: n.Object, Port: i.Port}], endpoints[n.Object])
+			frontends[n.HostName] = &util.Frontend{
+				Action:          util.BACKEND_ACTION_PROXY_RR,
+				Redirect:        nil,
+				Backends:        toBackendList(i.Scheme, services[PortMatch{Object: n.Object, Port: i.Port}], endpoints[n.Object]),
+			}
 		}
 	}
 
-	return backends
+	return frontends
 }
 
-func toBackendList(scheme string, service Service, endpoints []Endpoint) []util.BackendInterface {
-	backends := make([]util.BackendInterface, 0)
+func toBackendList(scheme string, service Service, endpoints []Endpoint) []util.Backend {
+	backends := make([]util.Backend, 0)
 	for _, e := range endpoints {
 		if e.Port == service.TargetPort {
 			backends = append(backends, util.Backend{

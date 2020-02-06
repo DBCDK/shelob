@@ -3,7 +3,7 @@ package util
 import (
 	"encoding/json"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/vulcand/oxy/roundrobin"
+	"github.com/vulcand/oxy/forward"
 	"k8s.io/client-go/rest"
 	"net/url"
 	"time"
@@ -21,9 +21,8 @@ type Config struct {
 	ReloadEvery         int
 	ReloadRollup        int
 	AcceptableUpdateLag int
-	Backends            map[string][]BackendInterface
-	RrbBackends         map[string]*roundrobin.RoundRobin
-	RedirectBackends    map[string]*Redirect
+	Frontends           map[string]*Frontend
+	Forwarder           *forward.Forwarder
 	Logging             Logging
 	State               State
 	Counters            Counters
@@ -60,8 +59,25 @@ type ShelobStatus struct {
 	UpdateLag  float64   `json:"updateLag"`
 }
 
+const (
+	BACKEND_ACTION_SERVE_INTERNAL = iota
+	BACKEND_ACTION_PROXY_RR
+	BACKEND_ACTION_REDIRECT
+)
+
 type Frontend struct {
+	Action   uint16
+	Redirect *Redirect
 	Backends []Backend
+}
+
+type Backend struct {
+	Url *url.URL
+}
+
+type Redirect struct {
+	Url  *url.URL
+	Code uint16
 }
 
 type Reload struct {
@@ -74,36 +90,6 @@ func NewReload(reason string) Reload {
 		Time:   time.Now(),
 		Reason: reason,
 	}
-}
-
-type Backend struct {
-	Url *url.URL
-}
-
-type Redirect struct {
-	Url  *url.URL
-	Code uint16
-}
-
-type BackendInterface interface {
-	Proxy() *Backend
-	Redirect() *Redirect
-}
-
-func (b Backend) Proxy() *Backend {
-	return &b
-}
-
-func (r Redirect) Proxy() *Backend {
-	return nil
-}
-
-func (b Backend) Redirect() *Redirect {
-	return nil
-}
-
-func (r Redirect) Redirect() *Redirect {
-	return &r
 }
 
 // convert url to string when serializing
