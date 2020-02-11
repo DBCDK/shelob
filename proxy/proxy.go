@@ -140,7 +140,7 @@ func dispatchRequest(frontend *util.Frontend, w http.ResponseWriter, req *http.R
 			newUrl.Scheme = "https"
 			frontend.Redirect = &util.Redirect{
 				Url:  newUrl,
-				Code: 302,
+				Code: 307,
 			}
 			frontend.Action = util.BACKEND_ACTION_REDIRECT
 		case util.PLAIN_HTTP_REJECT:

@@ -241,10 +241,10 @@ func mapRedirect(in v1beta12.Ingress) (data *util.Redirect) {
 		if err == nil {
 			_code, err := strconv.ParseInt(in.Annotations[REDIRECT_CODE_ANNOTATION], 10, 16)
 			var code uint16
-			if err == nil && (_code == 301 || _code == 302) {
+			if err == nil && (_code == 301 || _code == 302 || _code == 307) {
 				code = uint16(_code)
 			} else {
-				code = 302 // "302 Found" is the default
+				code = 307 // "307 Temporary Redirect" is the default
 			}
 			data = &util.Redirect{
 				Url:  url,
