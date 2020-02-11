@@ -4,9 +4,7 @@ import (
 	"errors"
 	"github.com/dbcdk/shelob/kubernetes"
 	"github.com/dbcdk/shelob/logging"
-	"github.com/dbcdk/shelob/proxy"
 	"github.com/dbcdk/shelob/util"
-	"github.com/vulcand/oxy/forward"
 	"go.uber.org/zap"
 	"sync"
 	"time"
@@ -19,15 +17,15 @@ var (
 	consecutive_errors = 0
 )
 
-func GetBackends(config *util.Config, timeout time.Duration) (map[string][]util.BackendInterface, error) {
-	resChan := make(chan map[string][]util.BackendInterface, 1)
+func GetFrontends(config *util.Config, timeout time.Duration) (map[string]*util.Frontend, error) {
+	resChan := make(chan map[string]*util.Frontend, 1)
 	errChan := make(chan error, 1)
 	go func() {
-		backends, err := kubernetes.UpdateBackends(config)
+		frontends, err := kubernetes.UpdateFrontends(config)
 		if err != nil {
 			errChan <- err
 		} else {
-			resChan <- backends
+			resChan <- frontends
 		}
 	}()
 
@@ -41,7 +39,7 @@ func GetBackends(config *util.Config, timeout time.Duration) (map[string][]util.
 	}
 }
 
-func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateChan chan util.Reload) (err error) {
+func BackendManager(config *util.Config, updateChan chan util.Reload) (err error) {
 	go func() {
 		for {
 			select {
@@ -76,7 +74,7 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 			zap.String("reason", update.Reason),
 			zap.String("event", "reload"),
 		)
-		backends, err := GetBackends(config, 5*time.Second)
+		frontends, err := GetFrontends(config, 5*time.Second)
 
 		if err != nil {
 			log.Error(err.Error(),
@@ -90,9 +88,7 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 
 		consecutive_errors = 0
 
-		config.Backends = backends
-		config.RrbBackends = proxy.CreateRoundRobinBackends(forwarder, backends)
-		config.RedirectBackends = CreateRedirectBackends(backends)
+		config.Frontends = frontends
 		config.Counters.Reloads.Inc()
 		config.LastUpdate = time.Now()
 		config.Counters.LastUpdate.Set(float64(config.LastUpdate.Unix()))
@@ -100,18 +96,6 @@ func BackendManager(config *util.Config, forwarder *forward.Forwarder, updateCha
 	})
 
 	return
-}
-
-func CreateRedirectBackends(backends map[string][]util.BackendInterface) map[string]*util.Redirect {
-	redirectBackends := make(map[string]*util.Redirect)
-	for h, l := range backends {
-		for _, b := range l {
-			if b.Redirect() != nil {
-				redirectBackends[h] = b.Redirect()
-			}
-		}
-	}
-	return redirectBackends
 }
 
 func trigger(reload util.Reload) {

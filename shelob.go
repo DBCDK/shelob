@@ -9,7 +9,6 @@ import (
 	"github.com/dbcdk/shelob/signals"
 	"github.com/dbcdk/shelob/util"
 	"github.com/sirupsen/logrus"
-	"github.com/vulcand/oxy/roundrobin"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
 	"strconv"
@@ -95,9 +94,8 @@ func main() {
 		ReloadEvery:         *reloadEvery,
 		ReloadRollup:        *reloadRollup,
 		AcceptableUpdateLag: *acceptableUpdateLag,
-		Backends:            make(map[string][]util.BackendInterface, 0),
-		RrbBackends:         make(map[string]*roundrobin.RoundRobin),
-		RedirectBackends:    make(map[string]*util.Redirect),
+		Frontends:           make(map[string]*util.Frontend, 0),
+		Forwarder:           proxy.CreateForwarder(),
 		DisableWatch:        *disableWatch,
 		IgnoreNamespaces:    ignoreNamespacesMap,
 		CertNamespace:       *certNamespace,
@@ -118,6 +116,5 @@ func main() {
 	go proxy.StartAdminServer(&config)
 
 	// start main loop
-	forwarder := proxy.CreateForwarder()
-	backends.BackendManager(&config, forwarder, backendsChan)
+	backends.BackendManager(&config, backendsChan)
 }

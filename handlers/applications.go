@@ -10,19 +10,19 @@ import (
 
 func CreateListApplicationsHandler(config *util.Config) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data := make(map[string][]util.BackendInterface)
+		data := make(map[string][]util.Backend)
 		port := "80"
 
 		if strings.Contains(r.Host, ":") {
 			port = strings.SplitN(r.Host, ":", 2)[1]
 		}
 
-		for domain, backends := range config.Backends {
+		for domain, frontend := range config.Frontends {
 			if port != "80" {
 				domain = domain + ":" + port
 			}
 
-			data[domain] = backends
+			data[domain] = frontend.Backends
 		}
 
 		var page = `
@@ -56,7 +56,7 @@ func CreateListApplicationsHandler(config *util.Config) func(http.ResponseWriter
 
 func CreateListApplicationsHandlerJson(config *util.Config) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		json, err := json.Marshal(config.Backends)
+		json, err := json.Marshal(config.Frontends)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
