@@ -63,10 +63,18 @@ const (
 	BACKEND_ACTION_SERVE_INTERNAL = iota
 	BACKEND_ACTION_PROXY_RR
 	BACKEND_ACTION_REDIRECT
+	BACKEND_ACTION_REJECT
+)
+
+const (
+	PLAIN_HTTP_ALLOW = iota
+	PLAIN_HTTP_REDIRECT
+	PLAIN_HTTP_REJECT
 )
 
 type Frontend struct {
 	Action   uint16
+	PlainHTTPPolicy uint16
 	Redirect *Redirect
 	Backends []Backend
 }

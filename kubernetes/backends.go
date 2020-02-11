@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	REDIRECT_URL_ANNOTATION  = "shelob.redirect.url"
-	REDIRECT_CODE_ANNOTATION = "shelob.redirect.code"
+	REDIRECT_URL_ANNOTATION      = "shelob.redirect.url"
+	REDIRECT_CODE_ANNOTATION     = "shelob.redirect.code"
+	PLAIN_HTTP_POLICY_ANNOTATION = "shelob.plain.http.policy"
 )
 
 func UpdateFrontends(config *util.Config) (map[string]*util.Frontend, error) {
@@ -51,12 +52,14 @@ func mergeFrontends(ingresses map[HostMatch]Ingress, services map[PortMatch]Serv
 		if i.Redirect != nil {
 			frontends[n.HostName] = &util.Frontend{
 				Action:          util.BACKEND_ACTION_REDIRECT,
+				PlainHTTPPolicy: i.PlainHTTPPolicy,
 				Redirect:        i.Redirect,
 				Backends:        []util.Backend{},
 			}
 		} else {
 			frontends[n.HostName] = &util.Frontend{
 				Action:          util.BACKEND_ACTION_PROXY_RR,
+				PlainHTTPPolicy: i.PlainHTTPPolicy,
 				Redirect:        nil,
 				Backends:        toBackendList(i.Scheme, services[PortMatch{Object: n.Object, Port: i.Port}], endpoints[n.Object]),
 			}
@@ -189,7 +192,7 @@ func mapIngress(in v1beta12.Ingress) map[string]Ingress {
 		if r.HTTP != nil {
 			for _, p := range r.HTTP.Paths {
 				if p.Path == "" || p.Path == "/" {
-					backend = mapBackend(in.Namespace, p.Backend)
+					backend = mapBackend(in, p.Backend)
 				}
 			}
 		}
@@ -201,6 +204,7 @@ func mapIngress(in v1beta12.Ingress) map[string]Ingress {
 				Name:     r.Host,
 				Port:     80,
 				Redirect: redirect,
+				PlainHTTPPolicy: mapPlainHTTPPolicy(in),
 			}
 		} else if r.Host != "" && backend != nil {
 			out[r.Host] = *backend
@@ -215,6 +219,20 @@ func mapIngress(in v1beta12.Ingress) map[string]Ingress {
 	return out
 }
 
+func mapPlainHTTPPolicy(in v1beta12.Ingress) uint16 {
+	_policy := in.Annotations[PLAIN_HTTP_POLICY_ANNOTATION]
+	switch _policy {
+	case "allow":
+		return util.PLAIN_HTTP_ALLOW
+	case "redirect":
+		return util.PLAIN_HTTP_REDIRECT
+	case "reject":
+		return util.PLAIN_HTTP_REJECT
+	default:
+		return util.PLAIN_HTTP_REDIRECT
+	}
+}
+
 func mapRedirect(in v1beta12.Ingress) (data *util.Redirect) {
 	data = nil
 	_redirectUrl, redirect := in.Annotations[REDIRECT_URL_ANNOTATION]
@@ -223,10 +241,10 @@ func mapRedirect(in v1beta12.Ingress) (data *util.Redirect) {
 		if err == nil {
 			_code, err := strconv.ParseInt(in.Annotations[REDIRECT_CODE_ANNOTATION], 10, 16)
 			var code uint16
-			if err == nil && (_code == 301 || _code == 302) {
+			if err == nil && (_code == 301 || _code == 302 || _code == 307) {
 				code = uint16(_code)
 			} else {
-				code = 302 // "302 Found" is the default
+				code = 307 // "307 Temporary Redirect" is the default
 			}
 			data = &util.Redirect{
 				Url:  url,
@@ -237,7 +255,9 @@ func mapRedirect(in v1beta12.Ingress) (data *util.Redirect) {
 	return
 }
 
-func mapBackend(namespace string, backend v1beta12.IngressBackend) *Ingress {
+func mapBackend(in v1beta12.Ingress, backend v1beta12.IngressBackend) *Ingress {
+
+	namespace := in.Namespace
 
 	port := backend.ServicePort.IntValue()
 	if _, err := toPort(port); err != nil {
@@ -252,6 +272,7 @@ func mapBackend(namespace string, backend v1beta12.IngressBackend) *Ingress {
 		Name:   backend.ServiceName,
 		Port:   uint16(port),
 		Scheme: "http",
+		PlainHTTPPolicy: mapPlainHTTPPolicy(in),
 	}
 }
 

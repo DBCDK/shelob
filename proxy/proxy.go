@@ -127,6 +127,27 @@ func CreateForwarder() *forward.Forwarder {
 }
 
 func dispatchRequest(frontend *util.Frontend, w http.ResponseWriter, req *http.Request, forwarder *forward.Forwarder) string {
+
+	// http vs. https
+	if req.TLS != nil {
+		req.Header.Set("X-Forwarded-Proto", "https")
+	} else {
+		switch frontend.PlainHTTPPolicy {
+		case util.PLAIN_HTTP_ALLOW:
+			req.Header.Set("X-Forwarded-Proto", "http")
+		case util.PLAIN_HTTP_REDIRECT:
+			newUrl := util.UrlClone(req)
+			newUrl.Scheme = "https"
+			frontend.Redirect = &util.Redirect{
+				Url:  newUrl,
+				Code: 307,
+			}
+			frontend.Action = util.BACKEND_ACTION_REDIRECT
+		case util.PLAIN_HTTP_REJECT:
+			frontend.Action = util.BACKEND_ACTION_REJECT
+		}
+	}
+
 	switch frontend.Action {
 	case util.BACKEND_ACTION_REDIRECT:
 		http.Redirect(w, req, frontend.Redirect.Url.String(), int(frontend.Redirect.Code))
@@ -138,6 +159,9 @@ func dispatchRequest(frontend *util.Frontend, w http.ResponseWriter, req *http.R
 			status := http.StatusServiceUnavailable
 			http.Error(w, http.StatusText(status), status)
 		}
+	case util.BACKEND_ACTION_REJECT:
+		status := http.StatusForbidden
+		http.Error(w, http.StatusText(status), status)
 	}
 
 	return actionToPrometheusRequestType(frontend.Action)
