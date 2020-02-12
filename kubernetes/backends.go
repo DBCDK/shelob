@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"fmt"
 	"github.com/dbcdk/shelob/util"
+	"github.com/vulcand/oxy/forward"
 	"go.uber.org/zap"
 	v13 "k8s.io/api/core/v1"
 	v1beta12 "k8s.io/api/extensions/v1beta1"
@@ -43,10 +44,10 @@ func UpdateFrontends(config *util.Config) (map[string]*util.Frontend, error) {
 		return nil, err
 	}
 
-	return mergeFrontends(ingresses, services, endpoints), nil
+	return mergeFrontends(config.Forwarder, ingresses, services, endpoints), nil
 }
 
-func mergeFrontends(ingresses map[HostMatch]Ingress, services map[PortMatch]Service, endpoints map[Object][]Endpoint) map[string]*util.Frontend {
+func mergeFrontends(forwarder *forward.Forwarder, ingresses map[HostMatch]Ingress, services map[PortMatch]Service, endpoints map[Object][]Endpoint) map[string]*util.Frontend {
 	frontends := make(map[string]*util.Frontend)
 	for n, i := range ingresses {
 		if i.Redirect != nil {
@@ -55,13 +56,16 @@ func mergeFrontends(ingresses map[HostMatch]Ingress, services map[PortMatch]Serv
 				PlainHTTPPolicy: i.PlainHTTPPolicy,
 				Redirect:        i.Redirect,
 				Backends:        []util.Backend{},
+				RR:              nil,
 			}
 		} else {
+			backends := toBackendList(i.Scheme, services[PortMatch{Object: n.Object, Port: i.Port}], endpoints[n.Object])
 			frontends[n.HostName] = &util.Frontend{
 				Action:          util.BACKEND_ACTION_PROXY_RR,
 				PlainHTTPPolicy: i.PlainHTTPPolicy,
 				Redirect:        nil,
-				Backends:        toBackendList(i.Scheme, services[PortMatch{Object: n.Object, Port: i.Port}], endpoints[n.Object]),
+				Backends:        backends,
+				RR:              util.CreateRR(forwarder, backends),
 			}
 		}
 	}
