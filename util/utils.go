@@ -35,7 +35,7 @@ func UrlClone(req *http.Request) *url.URL {
 		Path:       req.URL.Path,
 		RawPath:    req.URL.RawPath,
 		ForceQuery: req.URL.ForceQuery,
-		RawQuery:  	req.URL.RawQuery,
+		RawQuery:   req.URL.RawQuery,
 		Fragment:   req.URL.Fragment,
 	}
 }

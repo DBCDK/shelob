@@ -204,10 +204,10 @@ func mapIngress(in v1beta12.Ingress) map[string]Ingress {
 		redirect := mapRedirect(in)
 		if r.Host != "" && redirect != nil {
 			out[r.Host] = Ingress{
-				Scheme:   "http",
-				Name:     r.Host,
-				Port:     80,
-				Redirect: redirect,
+				Scheme:          "http",
+				Name:            r.Host,
+				Port:            80,
+				Redirect:        redirect,
 				PlainHTTPPolicy: mapPlainHTTPPolicy(in),
 			}
 		} else if r.Host != "" && backend != nil {
@@ -273,9 +273,9 @@ func mapBackend(in v1beta12.Ingress, backend v1beta12.IngressBackend) *Ingress {
 		return nil
 	}
 	return &Ingress{
-		Name:   backend.ServiceName,
-		Port:   uint16(port),
-		Scheme: "http",
+		Name:            backend.ServiceName,
+		Port:            uint16(port),
+		Scheme:          "http",
 		PlainHTTPPolicy: mapPlainHTTPPolicy(in),
 	}
 }
