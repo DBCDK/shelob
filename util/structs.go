@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/vulcand/oxy/forward"
+	"github.com/vulcand/oxy/roundrobin"
 	"k8s.io/client-go/rest"
 	"net/url"
 	"time"
@@ -73,10 +74,11 @@ const (
 )
 
 type Frontend struct {
-	Action   uint16
+	Action          uint16
 	PlainHTTPPolicy uint16
-	Redirect *Redirect
-	Backends []Backend
+	Redirect        *Redirect
+	Backends        []Backend
+	RR              *roundrobin.RoundRobin
 }
 
 type Backend struct {

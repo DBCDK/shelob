@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/viki-org/dnscache"
 	"github.com/vulcand/oxy/forward"
-	"github.com/vulcand/oxy/roundrobin"
 	"github.com/vulcand/oxy/utils"
 	"go.uber.org/zap"
 	"net"
@@ -152,8 +151,8 @@ func dispatchRequest(frontend *util.Frontend, w http.ResponseWriter, req *http.R
 	case util.BACKEND_ACTION_REDIRECT:
 		http.Redirect(w, req, frontend.Redirect.Url.String(), int(frontend.Redirect.Code))
 	case util.BACKEND_ACTION_PROXY_RR:
-		rr := createRRBackends(forwarder, frontend.Backends)
-		if len(rr.Servers()) > 0 {
+		rr := frontend.RR
+		if rr != nil && len(rr.Servers()) > 0 {
 			rr.ServeHTTP(w, req)
 		} else {
 			status := http.StatusServiceUnavailable
@@ -177,13 +176,4 @@ func actionToPrometheusRequestType(a uint16) (request_type string) {
 		request_type = "proxy"
 	}
 	return
-}
-
-func createRRBackends(forwarder *forward.Forwarder, backends []util.Backend) *roundrobin.RoundRobin {
-	rr, _ := roundrobin.New(forwarder)
-	for _, backend := range backends {
-		rr.UpsertServer(backend.Url)
-	}
-
-	return rr
 }

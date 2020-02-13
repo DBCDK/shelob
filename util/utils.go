@@ -1,9 +1,13 @@
 package util
 
 import (
+	"github.com/vulcand/oxy/forward"
+	"github.com/vulcand/oxy/roundrobin"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 func ReverseStringArray(array []string) []string {
@@ -32,7 +36,20 @@ func UrlClone(req *http.Request) *url.URL {
 		Path:       req.URL.Path,
 		RawPath:    req.URL.RawPath,
 		ForceQuery: req.URL.ForceQuery,
-		RawQuery:  	req.URL.RawQuery,
+		RawQuery:   req.URL.RawQuery,
 		Fragment:   req.URL.Fragment,
 	}
+}
+
+func CreateRR(forwarder *forward.Forwarder, backends []Backend) *roundrobin.RoundRobin {
+	// randomize the list of backends to try to circumvent slightly biased load towards the beginning of the backend list (at high backend reconcile rates)
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(backends), func(i, j int) { backends[i], backends[j] = backends[j], backends[i] })
+
+	rr, _ := roundrobin.New(forwarder)
+	for _, backend := range backends {
+		rr.UpsertServer(backend.Url)
+	}
+
+	return rr
 }
