@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 func ReverseStringArray(array []string) []string {
@@ -42,6 +43,7 @@ func UrlClone(req *http.Request) *url.URL {
 
 func CreateRR(forwarder *forward.Forwarder, backends []Backend) *roundrobin.RoundRobin {
 	// randomize the list of backends to try to circumvent slightly biased load towards the beginning of the backend list (at high backend reconcile rates)
+	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(backends), func(i, j int) { backends[i], backends[j] = backends[j], backends[i] })
 
 	rr, _ := roundrobin.New(forwarder)
