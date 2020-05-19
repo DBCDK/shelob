@@ -152,7 +152,11 @@ func dispatchRequest(frontend *util.Frontend, w http.ResponseWriter, req *http.R
 
 	switch frontend.Action {
 	case util.BACKEND_ACTION_REDIRECT:
-		http.Redirect(w, req, frontend.Intercept.Url.String(), int(frontend.Intercept.Code))
+		url := frontend.Intercept.Url
+		if url.Path == "" {
+			url.Path = req.RequestURI
+		}
+		http.Redirect(w, req, url.String(), int(frontend.Intercept.Code))
 	case util.BACKEND_ACTION_PROXY_RR:
 		rr := frontend.RR
 		if rr != nil && len(rr.Servers()) > 0 {
