@@ -64,7 +64,7 @@ const (
 	BACKEND_ACTION_SERVE_INTERNAL = iota
 	BACKEND_ACTION_PROXY_RR
 	BACKEND_ACTION_REDIRECT
-	BACKEND_ACTION_REJECT
+	BACKEND_ACTION_RESPOND
 )
 
 const (
@@ -76,7 +76,7 @@ const (
 type Frontend struct {
 	Action          uint16
 	PlainHTTPPolicy uint16
-	Redirect        *Redirect
+	Intercept       *Intercept
 	Backends        []Backend
 	RR              *roundrobin.RoundRobin
 }
@@ -85,9 +85,11 @@ type Backend struct {
 	Url *url.URL
 }
 
-type Redirect struct {
-	Url  *url.URL
-	Code uint16
+type Intercept struct {
+	Url          *url.URL
+	Code         uint16
+	ResponseText string
+	Action       uint16
 }
 
 type Reload struct {

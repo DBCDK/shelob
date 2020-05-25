@@ -137,19 +137,26 @@ func dispatchRequest(frontend *util.Frontend, w http.ResponseWriter, req *http.R
 		case util.PLAIN_HTTP_REDIRECT:
 			newUrl := util.UrlClone(req)
 			newUrl.Scheme = "https"
-			frontend.Redirect = &util.Redirect{
+			frontend.Intercept = &util.Intercept{
 				Url:  newUrl,
-				Code: 307,
+				Code: http.StatusTemporaryRedirect,
 			}
 			frontend.Action = util.BACKEND_ACTION_REDIRECT
 		case util.PLAIN_HTTP_REJECT:
-			frontend.Action = util.BACKEND_ACTION_REJECT
+			frontend.Action = util.BACKEND_ACTION_RESPOND
+			frontend.Intercept = &util.Intercept{
+				Code: http.StatusForbidden,
+			}
 		}
 	}
 
 	switch frontend.Action {
 	case util.BACKEND_ACTION_REDIRECT:
-		http.Redirect(w, req, frontend.Redirect.Url.String(), int(frontend.Redirect.Code))
+		url := frontend.Intercept.Url
+		if url.Path == "" {
+			url.Path = req.RequestURI
+		}
+		http.Redirect(w, req, url.String(), int(frontend.Intercept.Code))
 	case util.BACKEND_ACTION_PROXY_RR:
 		rr := frontend.RR
 		if rr != nil && len(rr.Servers()) > 0 {
@@ -158,9 +165,13 @@ func dispatchRequest(frontend *util.Frontend, w http.ResponseWriter, req *http.R
 			status := http.StatusServiceUnavailable
 			http.Error(w, http.StatusText(status), status)
 		}
-	case util.BACKEND_ACTION_REJECT:
-		status := http.StatusForbidden
-		http.Error(w, http.StatusText(status), status)
+	case util.BACKEND_ACTION_RESPOND:
+		status := int(frontend.Intercept.Code)
+		responseText := frontend.Intercept.ResponseText
+		if responseText == "" {
+			responseText = http.StatusText(status)
+		}
+		http.Error(w, responseText, status)
 	}
 
 	return actionToPrometheusRequestType(frontend.Action)
@@ -172,6 +183,8 @@ func actionToPrometheusRequestType(a uint16) (request_type string) {
 		request_type = "internal"
 	case util.BACKEND_ACTION_REDIRECT:
 		request_type = "redirect"
+	case util.BACKEND_ACTION_RESPOND:
+		request_type = "respond"
 	case util.BACKEND_ACTION_PROXY_RR:
 		request_type = "proxy"
 	}

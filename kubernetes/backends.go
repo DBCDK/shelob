@@ -19,6 +19,8 @@ import (
 const (
 	REDIRECT_URL_ANNOTATION      = "shelob.redirect.url"
 	REDIRECT_CODE_ANNOTATION     = "shelob.redirect.code"
+	RESPONSE_CODE_ANNOTATION     = "shelob.response.code"
+	RESPONSE_TEXT_ANNOTATION     = "shelob.response.text"
 	PLAIN_HTTP_POLICY_ANNOTATION = "shelob.plain.http.policy"
 )
 
@@ -50,11 +52,11 @@ func UpdateFrontends(config *util.Config) (map[string]*util.Frontend, error) {
 func mergeFrontends(forwarder *forward.Forwarder, ingresses map[HostMatch]Ingress, services map[PortMatch]Service, endpoints map[Object][]Endpoint) map[string]*util.Frontend {
 	frontends := make(map[string]*util.Frontend)
 	for n, i := range ingresses {
-		if i.Redirect != nil {
+		if i.Intercept != nil {
 			frontends[n.HostName] = &util.Frontend{
-				Action:          util.BACKEND_ACTION_REDIRECT,
+				Action:          i.Intercept.Action,
 				PlainHTTPPolicy: i.PlainHTTPPolicy,
-				Redirect:        i.Redirect,
+				Intercept:       i.Intercept,
 				Backends:        []util.Backend{},
 				RR:              nil,
 			}
@@ -63,7 +65,7 @@ func mergeFrontends(forwarder *forward.Forwarder, ingresses map[HostMatch]Ingres
 			frontends[n.HostName] = &util.Frontend{
 				Action:          util.BACKEND_ACTION_PROXY_RR,
 				PlainHTTPPolicy: i.PlainHTTPPolicy,
-				Redirect:        nil,
+				Intercept:       nil,
 				Backends:        backends,
 				RR:              util.CreateRR(forwarder, backends),
 			}
@@ -201,13 +203,13 @@ func mapIngress(in v1beta12.Ingress) map[string]Ingress {
 			}
 		}
 
-		redirect := mapRedirect(in)
-		if r.Host != "" && redirect != nil {
+		intercept := mapIntercept(in)
+		if r.Host != "" && intercept != nil {
 			out[r.Host] = Ingress{
 				Scheme:          "http",
 				Name:            r.Host,
 				Port:            80,
-				Redirect:        redirect,
+				Intercept:       intercept,
 				PlainHTTPPolicy: mapPlainHTTPPolicy(in),
 			}
 		} else if r.Host != "" && backend != nil {
@@ -237,10 +239,10 @@ func mapPlainHTTPPolicy(in v1beta12.Ingress) uint16 {
 	}
 }
 
-func mapRedirect(in v1beta12.Ingress) (data *util.Redirect) {
+func mapIntercept(in v1beta12.Ingress) (data *util.Intercept) {
 	data = nil
-	_redirectUrl, redirect := in.Annotations[REDIRECT_URL_ANNOTATION]
-	if redirect {
+
+	if _redirectUrl, redirect := in.Annotations[REDIRECT_URL_ANNOTATION]; redirect {
 		url, err := url.Parse(_redirectUrl)
 		if err == nil {
 			_code, err := strconv.ParseInt(in.Annotations[REDIRECT_CODE_ANNOTATION], 10, 16)
@@ -250,12 +252,27 @@ func mapRedirect(in v1beta12.Ingress) (data *util.Redirect) {
 			} else {
 				code = 307 // "307 Temporary Redirect" is the default
 			}
-			data = &util.Redirect{
-				Url:  url,
-				Code: code,
+			data = &util.Intercept{
+				Url:    url,
+				Code:   code,
+				Action: util.BACKEND_ACTION_REDIRECT,
 			}
 		}
+	} else if _responseCode, response := in.Annotations[RESPONSE_CODE_ANNOTATION]; response {
+		_code, err := strconv.ParseInt(_responseCode, 10, 16)
+		var code uint16
+		if err == nil && (_code == 400 || _code == 403 || _code == 404 || _code == 410) {
+			code = uint16(_code)
+		} else {
+			code = 400 // "400 Bad Request" is the default
+		}
+		data = &util.Intercept{
+			Code:         code,
+			ResponseText: in.Annotations[RESPONSE_TEXT_ANNOTATION],
+			Action:       util.BACKEND_ACTION_RESPOND,
+		}
 	}
+
 	return
 }
 
