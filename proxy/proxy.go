@@ -51,7 +51,7 @@ func RedirectHandler(config *util.Config) http.Handler {
 			status = http.StatusBadRequest
 			http.Error(w, "X-Forwarded-Host must not be repeated", status)
 		} else if frontend := config.Frontends[domain]; frontend != nil { // select frontend
-			request_type = dispatchRequest(frontend, w, req, config.Forwarder)
+			request_type = dispatchRequest(*frontend, w, req, config.Forwarder)
 		} else {
 			// TODO: make internal endpoint serving as explicit frontends -> get rid of this fallback
 			// no matching frontends, try serving internally
@@ -125,7 +125,7 @@ func CreateForwarder() *forward.Forwarder {
 	return forwarder
 }
 
-func dispatchRequest(frontend *util.Frontend, w http.ResponseWriter, req *http.Request, forwarder *forward.Forwarder) string {
+func dispatchRequest(frontend util.Frontend, w http.ResponseWriter, req *http.Request, forwarder *forward.Forwarder) string {
 
 	// http vs. https
 	if req.TLS != nil {
