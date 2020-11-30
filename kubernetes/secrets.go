@@ -1,8 +1,11 @@
 package kubernetes
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
+	"time"
+
 	"github.com/dbcdk/shelob/util"
 	"go.uber.org/zap"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,7 +20,8 @@ func GetCerts(config *util.Config, namespace string) (map[string]*tls.Certificat
 		return nil, err
 	}
 
-	secrets, err := clients.CoreV1().Secrets(namespace).List(v1.ListOptions{
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	secrets, err := clients.CoreV1().Secrets(namespace).List(ctx, v1.ListOptions{
 		LabelSelector: SECRET_HOSTNAME_LABEL,
 	})
 	if err != nil {

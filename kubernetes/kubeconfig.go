@@ -1,6 +1,8 @@
 package kubernetes
 
 import (
+	"os"
+
 	"github.com/dbcdk/shelob/logging"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -9,7 +11,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"os"
 )
 
 var (
@@ -33,7 +34,7 @@ func GetKubeConfig(kubeconfigFlag *string) (*rest.Config, error) {
 		return nil, err
 	}
 
-	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: scheme.Codecs}
+	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: scheme.Codecs}
 	return config, nil
 }
 
