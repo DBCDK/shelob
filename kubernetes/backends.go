@@ -1,7 +1,13 @@
 package kubernetes
 
 import (
+	"context"
 	"fmt"
+	"math"
+	"net/url"
+	"strconv"
+	"time"
+
 	"github.com/dbcdk/shelob/util"
 	"github.com/vulcand/oxy/forward"
 	"go.uber.org/zap"
@@ -11,9 +17,6 @@ import (
 	v12 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
-	"math"
-	"net/url"
-	"strconv"
 )
 
 const (
@@ -92,7 +95,8 @@ func toBackendList(scheme string, service Service, endpoints []Endpoint) []util.
 }
 
 func getServices(client v12.ServiceInterface) (map[PortMatch]Service, error) {
-	services, err := client.List(v1.ListOptions{})
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	services, err := client.List(ctx, v1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +140,8 @@ func mapService(service v13.Service) map[PortMatch]Service {
 }
 
 func getEndpoints(client v12.EndpointsInterface) (map[Object][]Endpoint, error) {
-	endpoints, err := client.List(v1.ListOptions{})
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	endpoints, err := client.List(ctx, v1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +155,8 @@ func getEndpoints(client v12.EndpointsInterface) (map[Object][]Endpoint, error) 
 }
 
 func getIngresses(client v1beta1.IngressInterface) (map[HostMatch]Ingress, error) {
-	ingresses, err := client.List(v1.ListOptions{})
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ingresses, err := client.List(ctx, v1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
