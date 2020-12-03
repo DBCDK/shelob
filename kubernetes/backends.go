@@ -11,11 +11,11 @@ import (
 	"github.com/dbcdk/shelob/util"
 	"github.com/vulcand/oxy/forward"
 	"go.uber.org/zap"
-	v13 "k8s.io/api/core/v1"
-	v1beta12 "k8s.io/api/extensions/v1beta1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v12 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
+	apicorev1 "k8s.io/api/core/v1"
+	machinerymetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	clientv1beta1 "k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
+	clientnetworkingv1 "k8s.io/client-go/kubernetes/typed/networking/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 )
 
@@ -34,9 +34,24 @@ func UpdateFrontends(config *util.Config) (map[string]*util.Frontend, error) {
 		return nil, err
 	}
 
-	ingresses, err := getIngresses(clients.ExtensionsV1beta1().Ingresses(""))
+	//TODO: Remove this when we're done supporting legacy apiversions
+	// -- along with the suport for v1beta resources in the apicompat.go file
+	v1beta1ingresses, err := getIngressesv1beta1(clients.ExtensionsV1beta1().Ingresses(""))
 	if err != nil {
 		return nil, err
+	}
+
+	v1ingresses, err := getIngressesv1(clients.NetworkingV1().Ingresses(""))
+	if err != nil {
+		return nil, err
+	}
+
+	var ingresses = make(map[HostMatch]Ingress)
+	for k, v := range v1beta1ingresses {
+		ingresses[k] = v
+	}
+	for k, v := range v1ingresses {
+		ingresses[k] = v
 	}
 
 	services, err := getServices(clients.CoreV1().Services(""))
@@ -94,9 +109,9 @@ func toBackendList(scheme string, service Service, endpoints []Endpoint) []util.
 	return backends
 }
 
-func getServices(client v12.ServiceInterface) (map[PortMatch]Service, error) {
+func getServices(client clientcorev1.ServiceInterface) (map[PortMatch]Service, error) {
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	services, err := client.List(ctx, v1.ListOptions{})
+	services, err := client.List(ctx, machinerymetav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +126,7 @@ func getServices(client v12.ServiceInterface) (map[PortMatch]Service, error) {
 	return out, nil
 }
 
-func mapService(service v13.Service) map[PortMatch]Service {
+func mapService(service apicorev1.Service) map[PortMatch]Service {
 	out := make(map[PortMatch]Service)
 	for _, s := range service.Spec.Ports {
 		var sourcePort, targetPort uint16
@@ -139,9 +154,9 @@ func mapService(service v13.Service) map[PortMatch]Service {
 	return out
 }
 
-func getEndpoints(client v12.EndpointsInterface) (map[Object][]Endpoint, error) {
+func getEndpoints(client clientcorev1.EndpointsInterface) (map[Object][]Endpoint, error) {
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	endpoints, err := client.List(ctx, v1.ListOptions{})
+	endpoints, err := client.List(ctx, machinerymetav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -154,16 +169,20 @@ func getEndpoints(client v12.EndpointsInterface) (map[Object][]Endpoint, error) 
 	return out, nil
 }
 
-func getIngresses(client v1beta1.IngressInterface) (map[HostMatch]Ingress, error) {
+func getIngressesv1beta1(client clientv1beta1.IngressInterface) (map[HostMatch]Ingress, error) {
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	ingresses, err := client.List(ctx, v1.ListOptions{})
+	ingresses, err := client.List(ctx, machinerymetav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
 	out := make(map[HostMatch]Ingress)
 	for _, i := range ingresses.Items {
-		for host, backend := range mapIngress(i) {
+		in := IngressCompat{
+			v1:      nil,
+			v1beta1: &i,
+		}
+		for host, backend := range mapIngress(in) {
 			out[HostMatch{
 				Object:   Object{Name: backend.Name, Namespace: i.Namespace},
 				HostName: host,
@@ -174,11 +193,35 @@ func getIngresses(client v1beta1.IngressInterface) (map[HostMatch]Ingress, error
 	return out, nil
 }
 
-func mapEndpoint(in v13.Endpoints) []Endpoint {
+func getIngressesv1(client clientnetworkingv1.IngressInterface) (map[HostMatch]Ingress, error) {
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ingresses, err := client.List(ctx, machinerymetav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[HostMatch]Ingress)
+	for _, i := range ingresses.Items {
+		in := IngressCompat{
+			v1:      &i,
+			v1beta1: nil,
+		}
+		for host, backend := range mapIngress(in) {
+			out[HostMatch{
+				Object:   Object{Name: backend.Name, Namespace: i.Namespace},
+				HostName: host,
+			}] = backend
+		}
+	}
+
+	return out, nil
+}
+
+func mapEndpoint(in apicorev1.Endpoints) []Endpoint {
 	out := make([]Endpoint, 0)
 	for _, s := range in.Subsets {
 		for _, p := range s.Ports {
-			if p.Protocol == v13.ProtocolTCP {
+			if p.Protocol == apicorev1.ProtocolTCP {
 				if _, err := i32toPort(p.Port); err == nil {
 					for _, a := range s.Addresses {
 						out = append(out, Endpoint{
@@ -194,45 +237,44 @@ func mapEndpoint(in v13.Endpoints) []Endpoint {
 	return out
 }
 
-func mapIngress(in v1beta12.Ingress) map[string]Ingress {
+func mapIngress(in IngressCompat) map[string]Ingress {
 	out := make(map[string]Ingress)
 
-	for _, r := range in.Spec.Rules {
-
+	for _, r := range in.getRules() {
 		//find suitable path target (we only support / for now)
 		var backend *Ingress
-		if r.HTTP != nil {
-			for _, p := range r.HTTP.Paths {
-				if p.Path == "" || p.Path == "/" {
-					backend = mapBackend(in, p.Backend)
+		if r.Http() != nil {
+			for _, p := range r.Http().Paths() {
+				if p.Backend() != nil && (p.Path() == "" || p.Path() == "/") {
+					backend = mapBackend(in, *p.Backend())
 				}
 			}
 		}
 
 		intercept := mapIntercept(in)
-		if r.Host != "" && intercept != nil {
-			out[r.Host] = Ingress{
+		if r.Host() != "" && intercept != nil {
+			out[r.Host()] = Ingress{
 				Scheme:          "http",
-				Name:            r.Host,
+				Name:            r.Host(),
 				Port:            80,
 				Intercept:       intercept,
 				PlainHTTPPolicy: mapPlainHTTPPolicy(in),
 			}
-		} else if r.Host != "" && backend != nil {
-			out[r.Host] = *backend
+		} else if r.Host() != "" && backend != nil {
+			out[r.Host()] = *backend
 		} else {
 			log.Debug("Ignoring ingress rule with no hostname, suitable backend, catch-all path or rule for /",
-				zap.String("name", in.Name),
-				zap.String("namespace", in.Namespace),
-				zap.String("host", r.Host))
+				zap.String("name", in.Name()),
+				zap.String("namespace", in.Namespace()),
+				zap.String("host", r.Host()))
 		}
 	}
 
 	return out
 }
 
-func mapPlainHTTPPolicy(in v1beta12.Ingress) uint16 {
-	_policy := in.Annotations[PLAIN_HTTP_POLICY_ANNOTATION]
+func mapPlainHTTPPolicy(in IngressCompat) uint16 {
+	_policy := in.getAnnotation(PLAIN_HTTP_POLICY_ANNOTATION)
 	switch _policy {
 	case "allow":
 		return util.PLAIN_HTTP_ALLOW
@@ -245,13 +287,13 @@ func mapPlainHTTPPolicy(in v1beta12.Ingress) uint16 {
 	}
 }
 
-func mapIntercept(in v1beta12.Ingress) (data *util.Intercept) {
+func mapIntercept(in IngressCompat) (data *util.Intercept) {
 	data = nil
 
-	if _redirectUrl, redirect := in.Annotations[REDIRECT_URL_ANNOTATION]; redirect {
+	if _redirectUrl, redirect := in.getOptionalAnnotation(REDIRECT_URL_ANNOTATION); redirect {
 		url, err := url.Parse(_redirectUrl)
 		if err == nil {
-			_code, err := strconv.ParseInt(in.Annotations[REDIRECT_CODE_ANNOTATION], 10, 16)
+			_code, err := strconv.ParseInt(in.getAnnotation(REDIRECT_CODE_ANNOTATION), 10, 16)
 			var code uint16
 			if err == nil && (_code == 301 || _code == 302 || _code == 307) {
 				code = uint16(_code)
@@ -264,7 +306,7 @@ func mapIntercept(in v1beta12.Ingress) (data *util.Intercept) {
 				Action: util.BACKEND_ACTION_REDIRECT,
 			}
 		}
-	} else if _responseCode, response := in.Annotations[RESPONSE_CODE_ANNOTATION]; response {
+	} else if _responseCode, response := in.getOptionalAnnotation(RESPONSE_CODE_ANNOTATION); response {
 		_code, err := strconv.ParseInt(_responseCode, 10, 16)
 		var code uint16
 		if err == nil && (_code == 400 || _code == 403 || _code == 404 || _code == 410) {
@@ -274,7 +316,7 @@ func mapIntercept(in v1beta12.Ingress) (data *util.Intercept) {
 		}
 		data = &util.Intercept{
 			Code:         code,
-			ResponseText: in.Annotations[RESPONSE_TEXT_ANNOTATION],
+			ResponseText: in.getAnnotation(RESPONSE_TEXT_ANNOTATION),
 			Action:       util.BACKEND_ACTION_RESPOND,
 		}
 	}
@@ -282,21 +324,20 @@ func mapIntercept(in v1beta12.Ingress) (data *util.Intercept) {
 	return
 }
 
-func mapBackend(in v1beta12.Ingress, backend v1beta12.IngressBackend) *Ingress {
+func mapBackend(in IngressCompat, backend IngressBackendCompat) *Ingress {
 
-	namespace := in.Namespace
+	namespace := in.Namespace()
 
-	port := backend.ServicePort.IntValue()
+	port := backend.ServicePort()
 	if _, err := toPort(port); err != nil {
 		log.Warn("Dropping ingress backend with invalid port (hint: port names not supported)",
-			zap.String("name", backend.ServiceName),
-			zap.String("namespace", namespace),
-			zap.String("port", backend.ServicePort.String()))
+			zap.String("name", backend.ServiceName()),
+			zap.String("namespace", namespace))
 
 		return nil
 	}
 	return &Ingress{
-		Name:            backend.ServiceName,
+		Name:            backend.ServiceName(),
 		Port:            uint16(port),
 		Scheme:          "http",
 		PlainHTTPPolicy: mapPlainHTTPPolicy(in),

@@ -2,9 +2,10 @@ package kubernetes
 
 import (
 	"fmt"
+
 	"github.com/dbcdk/shelob/util"
 	"go.uber.org/zap"
-	v13 "k8s.io/api/core/v1"
+	apicorev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -20,7 +21,7 @@ func WatchBackends(config *util.Config, updateChan chan util.Reload) error {
 		addRemoveFunc(newObj)
 	}
 	endpointAddRemoveFunc := func(obj interface{}) {
-		ev, ok := obj.(*v13.Endpoints)
+		ev, ok := obj.(*apicorev1.Endpoints)
 		if ok {
 			if _, ok := config.IgnoreNamespaces[ev.Namespace]; ok {
 				log.Debug("Ignored kubernetes endpoint-API event",
@@ -37,18 +38,27 @@ func WatchBackends(config *util.Config, updateChan chan util.Reload) error {
 	}
 
 	stopChan := make(chan struct{})
-	informerFactory, err := GetInformerFactory(config.Kubeconfig, v13.NamespaceAll)
+	informerFactory, err := GetInformerFactory(config.Kubeconfig, apicorev1.NamespaceAll)
 	if err != nil {
 		return err
 	}
 
-	ingressInformer := informerFactory.Extensions().V1beta1().Ingresses().Informer()
-	ingressInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ingressv1Informer := informerFactory.Networking().V1().Ingresses().Informer()
+	ingressv1Informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    addRemoveFunc,
 		UpdateFunc: updateFunc,
 		DeleteFunc: addRemoveFunc,
 	})
-	go ingressInformer.Run(stopChan)
+	go ingressv1Informer.Run(stopChan)
+
+	//TODO: Remove this when we're done supporting legacy apiversions
+	ingressv1beta1Informer := informerFactory.Extensions().V1beta1().Ingresses().Informer()
+	ingressv1beta1Informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    addRemoveFunc,
+		UpdateFunc: updateFunc,
+		DeleteFunc: addRemoveFunc,
+	})
+	go ingressv1beta1Informer.Run(stopChan)
 
 	serviceInformer := informerFactory.Core().V1().Services().Informer()
 	serviceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -79,7 +89,7 @@ func WatchSecrets(config *util.Config, updateChan chan util.Reload) error {
 			zap.String("object", fmt.Sprint(obj)),
 		)
 
-		if secret, ok := obj.(*v13.Secret); ok {
+		if secret, ok := obj.(*apicorev1.Secret); ok {
 			if _, hasLabel := secret.GetLabels()[SECRET_HOSTNAME_LABEL]; hasLabel {
 				updateChan <- util.NewReload("api-change-secrets")
 			}
