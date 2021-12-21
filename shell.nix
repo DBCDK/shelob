@@ -1,6 +1,6 @@
 { pkgs ? (import <nixpkgs> {}) }:
 let
-  go = pkgs.go_1_15;
+  go = pkgs.go_1_16;
 
   travis-build = pkgs.writeShellScriptBin "travis-build" ''
     set -euo pipefail
