@@ -1,13 +1,8 @@
 { pkgs ? (import <nixpkgs> {}) }:
 let
-  go = pkgs.go_1_16;
-
-  travis-build = pkgs.writeShellScriptBin "travis-build" ''
-    set -euo pipefail
-    GOROOT="${go}/share/go" GOPATH=/tmp ${go}/bin/go build
-  '';
+  drv = pkgs.callPackage ./. {};
 in
 pkgs.mkShell {
   name = "shelob-env";
-  buildInputs = [travis-build go pkgs.git];
+  inputsFrom = [ drv ];
 }
