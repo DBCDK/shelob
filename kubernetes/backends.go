@@ -14,7 +14,6 @@ import (
 	apicorev1 "k8s.io/api/core/v1"
 	machinerymetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	clientv1beta1 "k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
 	clientnetworkingv1 "k8s.io/client-go/kubernetes/typed/networking/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 )
@@ -34,22 +33,12 @@ func UpdateFrontends(config *util.Config) (map[string]*util.Frontend, error) {
 		return nil, err
 	}
 
-	//TODO: Remove this when we're done supporting legacy apiversions
-	// -- along with the suport for v1beta resources in the apicompat.go file
-	v1beta1ingresses, err := getIngressesv1beta1(clients.ExtensionsV1beta1().Ingresses(""))
-	if err != nil {
-		return nil, err
-	}
-
 	v1ingresses, err := getIngressesv1(clients.NetworkingV1().Ingresses(""))
 	if err != nil {
 		return nil, err
 	}
 
 	var ingresses = make(map[HostMatch]Ingress)
-	for k, v := range v1beta1ingresses {
-		ingresses[k] = v
-	}
 	for k, v := range v1ingresses {
 		ingresses[k] = v
 	}
@@ -169,30 +158,6 @@ func getEndpoints(client clientcorev1.EndpointsInterface) (map[Object][]Endpoint
 	return out, nil
 }
 
-func getIngressesv1beta1(client clientv1beta1.IngressInterface) (map[HostMatch]Ingress, error) {
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	ingresses, err := client.List(ctx, machinerymetav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	out := make(map[HostMatch]Ingress)
-	for _, i := range ingresses.Items {
-		in := IngressCompat{
-			v1:      nil,
-			v1beta1: &i,
-		}
-		for host, backend := range mapIngress(in) {
-			out[HostMatch{
-				Object:   Object{Name: backend.Name, Namespace: i.Namespace},
-				HostName: host,
-			}] = backend
-		}
-	}
-
-	return out, nil
-}
-
 func getIngressesv1(client clientnetworkingv1.IngressInterface) (map[HostMatch]Ingress, error) {
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	ingresses, err := client.List(ctx, machinerymetav1.ListOptions{})
@@ -204,7 +169,6 @@ func getIngressesv1(client clientnetworkingv1.IngressInterface) (map[HostMatch]I
 	for _, i := range ingresses.Items {
 		in := IngressCompat{
 			v1:      &i,
-			v1beta1: nil,
 		}
 		for host, backend := range mapIngress(in) {
 			out[HostMatch{
