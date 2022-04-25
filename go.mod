@@ -1,6 +1,6 @@
 module github.com/dbcdk/shelob
 
-go 1.17
+go 1.16
 
 require (
 	github.com/kavu/go_reuseport v1.5.0
