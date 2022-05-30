@@ -10,6 +10,7 @@ import (
 	"github.com/dbcdk/shelob/util"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -32,7 +33,8 @@ var (
 	accessLogEnabled    = kingpin.Flag("access-log", "Enable accesslog to stdout").Default("true").Bool()
 	disableWatch        = kingpin.Flag("disable-watch", "Disables the kubernetes watch-api feature, causing updates to only happen once per 'reload-every' interval.").Default("false").Bool()
 	ignoreNamespaces    = kingpin.Flag("ignore-namespaces", "Ignore endpoint watch-events from one or more (comma-separated) namespaces").Default("default,kube-system").String()
-	certNamespace       = kingpin.Flag("cert-namespace", "Namespace in which to search for issued certificates, if unset the certificate loader is disabled").String()
+	certFilePairs       = kingpin.Flag("cert-file-pairs", "Comma-separated list of keypair paths in local fs - format: 'hostname1:path-to-pubkey1:path-to-privkey1,hostname2:path-to-pubkey2:path-to-privkey2' etc., mutually excusive with 'cert-namespace'").String()
+	certNamespace       = kingpin.Flag("cert-namespace", "Kubernetes Namespace in which to search for issued certificates, mutually excusive with 'cert-file-pairs'").String()
 	wildcardCertPrefix  = kingpin.Flag("wildcard-cert-prefix", "The name prefix to use for wildcard certificates in Kubernetes, e.g. (prefix).wildcardexample.com.").Default("").String()
 	log                 = logging.GetInstance()
 )
@@ -73,6 +75,38 @@ func main() {
 		}
 	}
 
+	certFilePairMap := make(map[string]util.KeyPairPaths)
+	if *certFilePairs != "" {
+		for _, pair := range strings.Split(*certFilePairs, ",") {
+			parts := strings.Split(pair, ":")
+			certHostName := parts[0]
+			pubkey := parts[1]
+			privkey := parts[2]
+			if _, exists := certFilePairMap[certHostName]; exists || certHostName == "" {
+				log.Error("Cert: Invalid or duplicate hostname: " + certHostName)
+				os.Exit(1)
+			}
+			pubRaw, err := ioutil.ReadFile(pubkey)
+			if err != nil {
+				log.Error("Invalid public key file: " + pubkey + " err: " + err.Error())
+				os.Exit(1)
+			}
+			privRaw, err := ioutil.ReadFile(privkey)
+			if err != nil {
+				log.Error("Invalid private key file: " + pubkey + " err: " + err.Error())
+				os.Exit(1)
+			}
+			_, err = util.ParseX509(pubRaw, privRaw)
+			if err != nil {
+				log.Error("Unable to parse x509 cert: " + pubkey + ", key: " + privkey + " err: " + err.Error())
+				os.Exit(1)
+			}
+			certFilePairMap[certHostName] = util.KeyPairPaths{
+				PublicKey:  pubkey,
+				PrivateKey: privkey,
+			}
+		}
+	}
 	config := util.Config{
 		HttpPort:        *httpPort,
 		HttpsPort:       *httpsPort,
@@ -98,6 +132,7 @@ func main() {
 		Forwarder:           proxy.CreateForwarder(),
 		DisableWatch:        *disableWatch,
 		IgnoreNamespaces:    ignoreNamespacesMap,
+		CertFilePairMap:     certFilePairMap,
 		CertNamespace:       *certNamespace,
 		WildcardCertPrefix:  *wildcardCertPrefix,
 	}

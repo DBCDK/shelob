@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"github.com/dbcdk/shelob/kubernetes"
+	"github.com/dbcdk/shelob/localfs"
 	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/util"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,6 +19,7 @@ import (
 var log = logging.GetInstance()
 
 type CertLookup interface {
+	CertKeys() []string
 	Lookup(hostName string) *tls.Certificate
 	RegisterValidityMonitoring()
 }
@@ -29,20 +31,45 @@ type CertHandler struct {
 	queue                   []util.Reload
 	certValidity            *prometheus.GaugeVec
 	certValidityLastUpdated prometheus.Gauge
+	reconcileMethod         ReconcileMethod
 }
 
+type ReconcileMethod int64
+
+const (
+	RECONCILE_METHOD_DISABLED = iota
+	RECONCILE_METHOD_KUBERNETES
+	RECONCILE_METHOD_FILES
+)
+
 func New(config *util.Config, certUpdateChan chan util.Reload) CertLookup {
-	handler := &CertHandler{
-		config:     config,
-		queueMutex: sync.Mutex{},
-		queue:      make([]util.Reload, 0),
-	}
+	var reconcileMethod ReconcileMethod
 	if config.CertNamespace != "" {
-		go handler.reconcileCerts(certUpdateChan)
+		reconcileMethod = RECONCILE_METHOD_KUBERNETES
+	} else if len(config.CertFilePairMap) > 0 {
+		reconcileMethod = RECONCILE_METHOD_FILES
 	} else {
-		log.Info("Certificate loader disabled, namespace unset")
+		log.Info("Certificate loader disabled, neither namespace nor static file map is set")
+		reconcileMethod = RECONCILE_METHOD_DISABLED
+	}
+	handler := &CertHandler{
+		config:          config,
+		queueMutex:      sync.Mutex{},
+		queue:           make([]util.Reload, 0),
+		reconcileMethod: reconcileMethod,
+	}
+	if reconcileMethod != RECONCILE_METHOD_DISABLED {
+		go handler.reconcileCerts(certUpdateChan)
 	}
 	return handler
+}
+
+func (ch *CertHandler) CertKeys() []string {
+	keys := make([]string, len(ch.certs))
+	for n, _ := range ch.certs {
+		keys = append(keys, n)
+	}
+	return keys
 }
 
 func (ch *CertHandler) Lookup(hostName string) (cert *tls.Certificate) {
@@ -51,6 +78,22 @@ func (ch *CertHandler) Lookup(hostName string) (cert *tls.Certificate) {
 		cert = ch.certs[fmt.Sprintf("%s.%s", ch.config.WildcardCertPrefix, strings.Join(parts, "."))]
 	}
 	return
+}
+
+func (ch *CertHandler) GetCerts() (map[string]*tls.Certificate, error) {
+	if ch.reconcileMethod == RECONCILE_METHOD_KUBERNETES {
+		return kubernetes.GetCerts(ch.config, ch.config.CertNamespace)
+	} else {
+		return localfs.GetCerts(ch.config)
+	}
+}
+
+func (ch *CertHandler) WatchSecrets(certUpdateChan chan util.Reload) error {
+	if ch.reconcileMethod == RECONCILE_METHOD_KUBERNETES {
+		return kubernetes.WatchSecrets(ch.config, certUpdateChan)
+	} else {
+		return localfs.WatchSecrets(ch.config, certUpdateChan)
+	}
 }
 
 func (ch *CertHandler) reconcileCerts(certUpdateChan chan util.Reload) {
@@ -63,7 +106,7 @@ func (ch *CertHandler) reconcileCerts(certUpdateChan chan util.Reload) {
 			zap.String("reason", reload.Reason),
 			zap.String("event", "reload-certs"),
 		)
-		certs, err := kubernetes.GetCerts(ch.config, ch.config.CertNamespace)
+		certs, err := ch.GetCerts()
 		if err != nil {
 			log.Error("Failed to reload certificates",
 				zap.String("error", err.Error()),
@@ -77,7 +120,7 @@ func (ch *CertHandler) reconcileCerts(certUpdateChan chan util.Reload) {
 		ch.checkValidity(certs)
 	})
 
-	go kubernetes.WatchSecrets(ch.config, certUpdateChan)
+	go ch.WatchSecrets(certUpdateChan)
 
 	for {
 		select {

@@ -3,6 +3,7 @@ module github.com/dbcdk/shelob
 go 1.16
 
 require (
+	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/kavu/go_reuseport v1.5.0
 	github.com/prometheus/client_golang v1.12.1
 	github.com/sirupsen/logrus v1.8.1
