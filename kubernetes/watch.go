@@ -89,7 +89,6 @@ func WatchSecrets(config *util.Config, updateChan chan util.Reload) error {
 	updateFunc := func(oldObj interface{}, newObj interface{}) {
 		addRemoveFunc(newObj)
 	}
-	stopChan := make(chan struct{})
 
 	informerFactory, err := GetInformerFactory(config.Kubeconfig, config.CertNamespace)
 	if err != nil {
@@ -102,10 +101,15 @@ func WatchSecrets(config *util.Config, updateChan chan util.Reload) error {
 		UpdateFunc: updateFunc,
 		DeleteFunc: addRemoveFunc,
 	})
-	go informer.Run(stopChan)
 
-	<-config.State.ShutdownChan
-	stopChan <- struct{}{}
+	// All initial setup is done without errors, start the informer
+	go func() {
+		stopChan := make(chan struct{})
+		go informer.Run(stopChan)
+
+		<-config.State.ShutdownChan
+		stopChan <- struct{}{}
+	}()
 
 	return nil
 }

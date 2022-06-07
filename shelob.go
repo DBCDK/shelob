@@ -143,7 +143,11 @@ func main() {
 	backendsChan := make(chan util.Reload)
 	certsChan := make(chan util.Reload)
 
-	certHandler := certs.New(&config, certsChan)
+	certHandler, err := certs.New(&config, certsChan)
+	if err != nil {
+		log.Error("Couldn't start certHandler, exitting... err: " + err.Error())
+		os.Exit(1)
+	}
 	certHandler.RegisterValidityMonitoring()
 
 	go proxy.StartProxyServer(&config)

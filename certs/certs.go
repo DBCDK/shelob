@@ -42,7 +42,7 @@ const (
 	RECONCILE_METHOD_FILES
 )
 
-func New(config *util.Config, certUpdateChan chan util.Reload) CertLookup {
+func New(config *util.Config, certUpdateChan chan util.Reload) (CertLookup, error) {
 	var reconcileMethod ReconcileMethod
 	if config.CertNamespace != "" {
 		reconcileMethod = RECONCILE_METHOD_KUBERNETES
@@ -59,9 +59,10 @@ func New(config *util.Config, certUpdateChan chan util.Reload) CertLookup {
 		reconcileMethod: reconcileMethod,
 	}
 	if reconcileMethod != RECONCILE_METHOD_DISABLED {
-		go handler.reconcileCerts(certUpdateChan)
+		return handler, handler.reconcileCerts(certUpdateChan)
+	} else {
+		return handler, nil
 	}
-	return handler
 }
 
 func (ch *CertHandler) CertKeys() []string {
@@ -96,7 +97,7 @@ func (ch *CertHandler) WatchSecrets(certUpdateChan chan util.Reload) error {
 	}
 }
 
-func (ch *CertHandler) reconcileCerts(certUpdateChan chan util.Reload) {
+func (ch *CertHandler) reconcileCerts(certUpdateChan chan util.Reload) error {
 
 	ch.trigger(util.NewReload("initial"))
 	go ch.poll(func(reload util.Reload) {
@@ -120,7 +121,11 @@ func (ch *CertHandler) reconcileCerts(certUpdateChan chan util.Reload) {
 		ch.checkValidity(certs)
 	})
 
-	go ch.WatchSecrets(certUpdateChan)
+	// Watchers themselves will fork if no errors are returned here
+	err := ch.WatchSecrets(certUpdateChan)
+	if err != nil {
+		return err
+	}
 
 	for {
 		select {
