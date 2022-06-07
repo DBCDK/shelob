@@ -2,33 +2,33 @@ package localfs
 
 import (
 	"crypto/tls"
-	"io/ioutil"
+	"github.com/dbcdk/shelob/logging"
 	"github.com/dbcdk/shelob/util"
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
-	"github.com/dbcdk/shelob/logging"
+	"io/ioutil"
 )
 
 var log = logging.GetInstance()
 
 func GetCerts(config *util.Config) (map[string]*tls.Certificate, error) {
 	certs := make(map[string]*tls.Certificate)
-		for name, files := range config.CertFilePairMap {
-			pubRaw, err := ioutil.ReadFile(files.PublicKey)
-			if err != nil {
-				return nil, err
-			}
-			privRaw, err := ioutil.ReadFile(files.PrivateKey)
-			if err != nil {
-				return nil, err
-			}
-			cert, err := util.ParseX509(pubRaw, privRaw)
-			if err != nil {
-				return nil, err
-			}
-			certs[name] = cert
+	for name, files := range config.CertFilePairMap {
+		pubRaw, err := ioutil.ReadFile(files.PublicKey)
+		if err != nil {
+			return nil, err
 		}
-		return certs, nil
+		privRaw, err := ioutil.ReadFile(files.PrivateKey)
+		if err != nil {
+			return nil, err
+		}
+		cert, err := util.ParseX509(pubRaw, privRaw)
+		if err != nil {
+			return nil, err
+		}
+		certs[name] = cert
+	}
+	return certs, nil
 }
 
 func WatchSecrets(config *util.Config, updateChan chan util.Reload) error {
