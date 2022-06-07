@@ -30,7 +30,15 @@ func GetCerts(config *util.Config, namespace string) (map[string]*tls.Certificat
 
 	certs := make(map[string]*tls.Certificate)
 	for _, s := range secrets.Items {
-		cert, err := parsex509Secret(s.Data)
+		certRaw, ok := s.Data["cert"]
+		if !ok {
+			return nil, fmt.Errorf("Public key part ('cert') missing")
+		}
+		keyRaw, ok := s.Data["key"]
+		if !ok {
+			return nil, fmt.Errorf("Private key part ('key') missing")
+		}
+		cert, err := util.ParseX509(certRaw, keyRaw)
 		hostName := s.Labels[SECRET_HOSTNAME_LABEL]
 		if err != nil {
 			log.Error("Failed to parse x509 keypair",
@@ -44,18 +52,4 @@ func GetCerts(config *util.Config, namespace string) (map[string]*tls.Certificat
 	}
 
 	return certs, nil
-}
-
-func parsex509Secret(data map[string][]byte) (*tls.Certificate, error) {
-	cert, ok := data["cert"]
-	if !ok {
-		return nil, fmt.Errorf("Public key part ('cert') missing")
-	}
-	key, ok := data["key"]
-	if !ok {
-		return nil, fmt.Errorf("Private key part ('key') missing")
-	}
-
-	out, err := tls.X509KeyPair(cert, key)
-	return &out, err
 }

@@ -32,6 +32,7 @@ type Config struct {
 	Kubeconfig          *rest.Config
 	DisableWatch        bool
 	IgnoreNamespaces    map[string]bool
+	CertFilePairMap     map[string]KeyPairPaths
 	CertNamespace       string
 	WildcardCertPrefix  string
 }
@@ -95,6 +96,11 @@ type Intercept struct {
 type Reload struct {
 	Time   time.Time
 	Reason string
+}
+
+type KeyPairPaths struct {
+	PublicKey  string
+	PrivateKey string
 }
 
 func NewReload(reason string) Reload {

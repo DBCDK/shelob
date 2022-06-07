@@ -74,7 +74,9 @@ func StartTLSProxyServer(config *util.Config, cl certs.CertLookup) {
 					return cert, nil
 				}
 				log.Warn("Unable to find and serve certificate for host",
-					zap.String("host", info.ServerName))
+					zap.String("host", info.ServerName),
+					zap.Strings("available-certs", cl.CertKeys()),
+				)
 				if selfSigned != nil {
 					return selfSigned, nil
 				} else {

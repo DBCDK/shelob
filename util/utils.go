@@ -1,6 +1,7 @@
 package util
 
 import (
+	"crypto/tls"
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/roundrobin"
 	"math/rand"
@@ -52,4 +53,9 @@ func CreateRR(forwarder *forward.Forwarder, backends []Backend) *roundrobin.Roun
 	}
 
 	return rr
+}
+
+func ParseX509(cert []byte, key []byte) (*tls.Certificate, error) {
+	out, err := tls.X509KeyPair(cert, key)
+	return &out, err
 }
