@@ -148,7 +148,6 @@ func main() {
 		log.Error("Couldn't start certHandler, exitting... err: " + err.Error())
 		os.Exit(1)
 	}
-	certHandler.RegisterValidityMonitoring()
 
 	go proxy.StartProxyServer(&config)
 	go proxy.StartTLSProxyServer(&config, certHandler)
