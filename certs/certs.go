@@ -21,7 +21,6 @@ var log = logging.GetInstance()
 type CertLookup interface {
 	CertKeys() []string
 	Lookup(hostName string) *tls.Certificate
-	RegisterValidityMonitoring()
 }
 
 type CertHandler struct {
@@ -58,6 +57,7 @@ func New(config *util.Config, certUpdateChan chan util.Reload) (CertLookup, erro
 		queue:           make([]util.Reload, 0),
 		reconcileMethod: reconcileMethod,
 	}
+	handler.registerValidityMonitoring()
 	if reconcileMethod != RECONCILE_METHOD_DISABLED {
 		return handler, handler.reconcileCerts(certUpdateChan)
 	} else {
@@ -127,20 +127,24 @@ func (ch *CertHandler) reconcileCerts(certUpdateChan chan util.Reload) error {
 		return err
 	}
 
-	for {
-		select {
-		case reload := <-certUpdateChan:
-			delay := time.Now().Sub(reload.Time)
-			log.Debug("Certificate reload requested",
-				zap.String("delay", delay.String()),
-				zap.String("reason", reload.Reason),
-			)
-			ch.trigger(reload)
-		case <-time.After(time.Second * time.Duration(ch.config.ReloadEvery)):
-			log.Debug("Reload-every time elapsed without updates, forcing reload of backends")
-			ch.trigger(util.NewReload("reload-every-time-elapsed"))
+	go func() {
+		for {
+			select {
+			case reload := <-certUpdateChan:
+				delay := time.Now().Sub(reload.Time)
+				log.Debug("Certificate reload requested",
+					zap.String("delay", delay.String()),
+					zap.String("reason", reload.Reason),
+				)
+				ch.trigger(reload)
+			case <-time.After(time.Second * time.Duration(ch.config.ReloadEvery)):
+				log.Debug("Reload-every time elapsed without updates, forcing reload of backends")
+				ch.trigger(util.NewReload("reload-every-time-elapsed"))
+			}
 		}
-	}
+	}()
+
+	return nil
 }
 
 func (ch *CertHandler) trigger(reload util.Reload) {
@@ -170,7 +174,7 @@ func (ch *CertHandler) poll(reload func(update util.Reload)) {
 	}
 }
 
-func (ch *CertHandler) RegisterValidityMonitoring() {
+func (ch *CertHandler) registerValidityMonitoring() {
 	ch.certValidity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "shelob_cert_expiry_days",
 		Help: "Number of days until expiry for shelob TLS-certificates",
