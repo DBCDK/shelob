@@ -127,20 +127,24 @@ func (ch *CertHandler) reconcileCerts(certUpdateChan chan util.Reload) error {
 		return err
 	}
 
-	for {
-		select {
-		case reload := <-certUpdateChan:
-			delay := time.Now().Sub(reload.Time)
-			log.Debug("Certificate reload requested",
-				zap.String("delay", delay.String()),
-				zap.String("reason", reload.Reason),
-			)
-			ch.trigger(reload)
-		case <-time.After(time.Second * time.Duration(ch.config.ReloadEvery)):
-			log.Debug("Reload-every time elapsed without updates, forcing reload of backends")
-			ch.trigger(util.NewReload("reload-every-time-elapsed"))
+	go func() {
+		for {
+			select {
+			case reload := <-certUpdateChan:
+				delay := time.Now().Sub(reload.Time)
+				log.Debug("Certificate reload requested",
+					zap.String("delay", delay.String()),
+					zap.String("reason", reload.Reason),
+				)
+				ch.trigger(reload)
+			case <-time.After(time.Second * time.Duration(ch.config.ReloadEvery)):
+				log.Debug("Reload-every time elapsed without updates, forcing reload of backends")
+				ch.trigger(util.NewReload("reload-every-time-elapsed"))
+			}
 		}
-	}
+	}()
+
+	return nil
 }
 
 func (ch *CertHandler) trigger(reload util.Reload) {
