@@ -1,4 +1,6 @@
-{ pkgs ? (import <nixpkgs> {}) }:
+{ nixpkgs ? import ./nixpkgs.nix
+, pkgs ? import nixpkgs {}
+}:
 let
   drv = pkgs.callPackage ./. {};
 in
