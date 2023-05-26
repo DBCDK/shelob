@@ -5,5 +5,5 @@
 pkgs.buildGoModule {
   name = "shelob";
   src = ./.;
-  vendorSha256 = "sha256-pUrrQJ1XfsBhrhoqC9Qa9vopuE+YA9Xdlbal1mzlj0I=";
+  vendorSha256 = "sha256-+xxGoangySd679nW5fw6LIMZt6hN8br4sifvjQuizGs=";
 }
