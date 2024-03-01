@@ -49,22 +49,17 @@
           };
         };
 
-        # Acessible through 'nix develop' or 'nix-shell' (legacy)
-        devShells.default = pkgs.mkShell {
+        # Accessible through 'nix develop' or 'nix-shell' (legacy)
+        devShells.default = import ./shell.nix {
+          inherit nixpkgs pkgs;
+          shelob = self.packages.${system}.default;
           inherit (self.checks.${system}.pre-commit-check) shellHook;
-          inputsFrom = [ self.packages.${system}.default ];
         };
 
         packages = rec {
           default = shelob;
-          shelob = pkgs.buildGoModule rec {
-            name = "shelob-${version}";
-            inherit version;
-
-            src = pkgs.nix-gitignore.gitignoreSource [ ] ./.;
-
-            vendorHash = "sha256-PHUjvHwO6UOdWxTavFIkBbm/F1MDlSk/YmSTf1xGKS4=";
-          };
+          shelob =
+            pkgs.callPackage ./default.nix { inherit version nixpkgs pkgs; };
         };
       });
 }
