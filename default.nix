@@ -1,6 +1,4 @@
-{ nixpkgs ? import ./nixpkgs.nix
-, pkgs ? import nixpkgs {}
-}:
+{ nixpkgs ? import ./nixpkgs.nix, pkgs ? import nixpkgs { } }:
 
 pkgs.buildGoModule {
   name = "shelob";
