@@ -1,8 +1,4 @@
-{
-  nixpkgs ? import ./nixpkgs.nix,
-  pkgs ? import nixpkgs { },
-  version ? "dev",
-}:
+{ nixpkgs ? import ./nixpkgs.nix, pkgs ? import nixpkgs { }, version ? "dev", }:
 
 pkgs.buildGoModule {
   name = "shelob-${version}";
