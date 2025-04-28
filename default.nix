@@ -6,5 +6,5 @@ pkgs.buildGoModule {
 
   src = pkgs.nix-gitignore.gitignoreSource [ ] ./.;
 
-  vendorHash = "sha256-EVG4fpkfT+zruAfbagi4ku7Icng6DBS9/7o4Ch1bThw=";
+  vendorHash = "sha256-1erL4CZHnMwXEzXpB43lvtfn5AiuMfppu9Kkceb3w8o=";
 }
